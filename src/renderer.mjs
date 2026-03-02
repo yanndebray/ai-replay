@@ -48,8 +48,9 @@ export function render(turns, opts = {}) {
   let html = readFileSync(TEMPLATE_PATH, "utf-8");
 
   html = html.replace("/*THEME_CSS*/", themeToCss(theme));
-  html = html.replace("/*TURNS_JSON*/", turnsToJson(turns));
-  html = html.replace(/\/\*INITIAL_SPEED\*\//g, String(speed));
+  html = html.replace("/*TURNS_JSON*/[]", turnsToJson(turns));
+  html = html.replace("/*INITIAL_SPEED*/1", String(speed));  // JS default
+  html = html.replace(/\/\*INITIAL_SPEED\*\//g, String(speed));  // HTML attrs
   html = html.replace("/*CHECKED_THINKING*/", showThinking ? "checked" : "");
   html = html.replace("/*CHECKED_TOOLS*/", showToolCalls ? "checked" : "");
   html = html.replace("/*CHECKED_RESULTS*/", showToolResults ? "checked" : "");
