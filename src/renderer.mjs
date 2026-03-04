@@ -13,7 +13,7 @@ const TEMPLATE_PATH = new URL("../template/player.html", import.meta.url);
  * @param {import('./parser.mjs').Turn[]} turns
  * @param {{ redact?: boolean }} options
  */
-function turnsToJson(turns, { redact = true, animate = false } = {}) {
+function turnsToJson(turns, { redact = true } = {}) {
   const data = turns.map((turn) => ({
     index: turn.index,
     user_text: redact ? redactSecrets(turn.user_text) : turn.user_text,
@@ -22,7 +22,7 @@ function turnsToJson(turns, { redact = true, animate = false } = {}) {
         kind: b.kind,
         text: redact ? redactSecrets(b.text) : b.text,
       };
-      if (animate && b.timestamp) block.timestamp = b.timestamp;
+      if (b.timestamp) block.timestamp = b.timestamp;
       if (b.tool_call) {
         block.tool_call = {
           name: b.tool_call.name,
@@ -33,7 +33,7 @@ function turnsToJson(turns, { redact = true, animate = false } = {}) {
             ? redactSecrets(b.tool_call.result)
             : b.tool_call.result,
         };
-        if (animate && b.tool_call.resultTimestamp) {
+        if (b.tool_call.resultTimestamp) {
           block.tool_call.resultTimestamp = b.tool_call.resultTimestamp;
         }
       }
@@ -62,7 +62,6 @@ export function render(turns, opts = {}) {
     title = "Claude Code Replay",
     redactSecrets: redact = true,
     bookmarks = [],
-    animate = false,
   } = opts;
 
   let html = readFileSync(TEMPLATE_PATH, "utf-8");
@@ -71,7 +70,6 @@ export function render(turns, opts = {}) {
   // because the JSON data can contain arbitrary text (including placeholder strings
   // from session transcripts) which would collide with .replace().
   html = html.replace("/*THEME_CSS*/", themeToCss(theme));
-  html = html.replace("%%ANIMATE_MODE%%", String(animate));
   html = html.replace("/*INITIAL_SPEED*/1", String(speed));  // JS default
   html = html.replace(/\/\*INITIAL_SPEED\*\//g, String(speed));  // HTML attrs
   html = html.replaceAll("/*CHECKED_THINKING*/", showThinking ? "checked" : "");
@@ -81,7 +79,7 @@ export function render(turns, opts = {}) {
   html = html.replace("/*ASSISTANT_LABEL*/", assistantLabel);
 
   // JSON blobs last — they may contain text matching any of the above placeholders
-  html = html.replace("/*TURNS_JSON*/[]", turnsToJson(turns, { redact, animate }));
+  html = html.replace("/*TURNS_JSON*/[]", turnsToJson(turns, { redact }));
   html = html.replace("/*BOOKMARKS_JSON*/[]", JSON.stringify(bookmarks));
 
   return html;

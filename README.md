@@ -50,7 +50,6 @@ claude-replay <input.jsonl> [options]
 | `--no-tool-calls` | Hide tool call blocks by default |
 | `--mark "N:Label"` | Add a bookmark/chapter at turn N (repeatable) |
 | `--bookmarks FILE` | JSON file with bookmarks `[{turn, label}]` |
-| `--animate` | Progressively reveal blocks within turns using real timestamps |
 | `--no-redact` | Disable automatic secret redaction |
 | `--title TEXT` | Page title (default: derived from input path) |
 | `--theme NAME` | Built-in theme (default: `tokyo-night`) |

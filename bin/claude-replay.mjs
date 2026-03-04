@@ -26,7 +26,6 @@ const options = {
   title: { type: "string" },
   "user-label": { type: "string", default: "User" },
   "assistant-label": { type: "string", default: "Claude" },
-  animate: { type: "boolean", default: false },
   mark: { type: "string", multiple: true },
   bookmarks: { type: "string" },
   help: { type: "boolean", short: "h", default: false },
@@ -61,7 +60,6 @@ Options:
   --theme-file FILE       Custom theme JSON file (overrides --theme)
   --user-label NAME       Label for user messages (default: User)
   --assistant-label NAME  Label for assistant messages (default: Claude)
-  --animate               Progressively reveal blocks within turns using timestamps
   --mark "N:Label"        Add a bookmark at turn N (repeatable)
   --bookmarks FILE        JSON file with bookmarks [{turn, label}]
   --list-themes           List available built-in themes and exit
@@ -212,7 +210,6 @@ const html = render(turns, {
   assistantLabel: values["assistant-label"],
   title,
   bookmarks,
-  animate: values.animate,
 });
 
 if (values.output) {
