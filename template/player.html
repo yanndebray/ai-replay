@@ -178,8 +178,7 @@ body.in-iframe .bar-title:hover {
   display: none;
   position: absolute;
   bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
+  right: 0;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -266,7 +265,7 @@ body.in-iframe .bar-title:hover {
   font-size: 16px;
   font-weight: bold;
 }
-#chapter-btn { font-size: 14px; }
+#chapter-btn { font-size: 20px; }
 
 @media (max-width: 600px) {
   body:not(.in-iframe) #more-btn { display: inline-flex; }
@@ -274,13 +273,13 @@ body.in-iframe .bar-title:hover {
   body:not(.in-iframe) .progress-text { display: none; }
   body:not(.in-iframe) .chapter-wrap { display: none !important; }
 }
-/* iframe: show speed + filter directly */
-body.in-iframe #more-btn { display: inline-flex; }
+/* iframe */
 body.in-iframe .progress-text { display: none; }
-body.in-iframe .chapter-wrap { display: none !important; }
-/* Narrow iframes: collapse everything like mobile */
+/* Narrow iframes: collapse into more menu */
 @media (max-width: 400px) {
+  body.in-iframe #more-btn { display: inline-flex; }
   body.in-iframe .controls-secondary { display: none; }
+  body.in-iframe .chapter-wrap { display: none !important; }
 }
 
 /* Transcript area */
@@ -1431,16 +1430,18 @@ body.in-iframe .chapter-wrap { display: none !important; }
   btnNext.addEventListener("click", stepForward);
   btnPrev.addEventListener("click", stepBack);
 
-  // Speed popover
+  // Popover elements
   const speedWrap = $("#speed-wrap");
   const speedPopover = $("#speed-popover");
-
-  // Filter popover
   const filterWrap = $("#filter-wrap");
   const filterBtn = $("#filter-btn");
+  const chapterWrap = $("#chapter-wrap");
+  const chapterBtn = $("#chapter-btn");
+  const chapterMenu = $("#chapter-menu");
   filterBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     speedWrap.classList.remove("open");
+    if (chapterWrap) chapterWrap.classList.remove("open");
     filterWrap.classList.toggle("open");
   });
   document.addEventListener("click", (e) => {
@@ -1475,10 +1476,19 @@ body.in-iframe .chapter-wrap { display: none !important; }
   speedBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     filterWrap.classList.remove("open");
+    if (chapterWrap) chapterWrap.classList.remove("open");
     speedWrap.classList.toggle("open");
   });
   document.addEventListener("click", (e) => {
     if (!speedWrap.contains(e.target)) speedWrap.classList.remove("open");
+  });
+
+  // Close all popovers when iframe loses focus
+  window.addEventListener("blur", () => {
+    speedWrap.classList.remove("open");
+    filterWrap.classList.remove("open");
+    if (chapterWrap) chapterWrap.classList.remove("open");
+    moreWrap.classList.remove("open");
   });
 
   function seekFromX(clientX) {
@@ -1551,10 +1561,6 @@ body.in-iframe .chapter-wrap { display: none !important; }
   }
 
   // --- Bookmarks / Chapters ---
-  const chapterWrap = $("#chapter-wrap");
-  const chapterBtn = $("#chapter-btn");
-  const chapterMenu = $("#chapter-menu");
-
   if (BOOKMARKS.length > 0) {
     chapterWrap.style.display = "";
 
@@ -1596,6 +1602,8 @@ body.in-iframe .chapter-wrap { display: none !important; }
 
     chapterBtn.addEventListener("click", (e) => {
       e.stopPropagation();
+      speedWrap.classList.remove("open");
+      filterWrap.classList.remove("open");
       chapterWrap.classList.toggle("open");
     });
     document.addEventListener("click", (e) => {

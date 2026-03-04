@@ -78,9 +78,11 @@ export function render(turns, opts = {}) {
   html = html.replace("/*USER_LABEL*/", userLabel);
   html = html.replace("/*ASSISTANT_LABEL*/", assistantLabel);
 
-  // JSON blobs last — they may contain text matching any of the above placeholders
-  html = html.replace("/*TURNS_JSON*/[]", turnsToJson(turns, { redact }));
+  // JSON blobs last — they may contain text matching any of the above placeholders.
+  // BOOKMARKS before TURNS, because TURNS data may contain the literal placeholder
+  // string in user messages (e.g. from pasted plans).
   html = html.replace("/*BOOKMARKS_JSON*/[]", JSON.stringify(bookmarks));
+  html = html.replace("/*TURNS_JSON*/[]", turnsToJson(turns, { redact }));
 
   return html;
 }
