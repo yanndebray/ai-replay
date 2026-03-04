@@ -62,6 +62,7 @@ export function render(turns, opts = {}) {
     title = "Claude Code Replay",
     redactSecrets: redact = true,
     bookmarks = [],
+    scrollMode = "bottom",
   } = opts;
 
   let html = readFileSync(TEMPLATE_PATH, "utf-8");
@@ -77,6 +78,7 @@ export function render(turns, opts = {}) {
   html = html.replaceAll("/*PAGE_TITLE*/", title);
   html = html.replace("/*USER_LABEL*/", userLabel);
   html = html.replace("/*ASSISTANT_LABEL*/", assistantLabel);
+  html = html.replace("/*SCROLL_MODE*/", scrollMode);
 
   // JSON blobs last — they may contain text matching any of the above placeholders.
   // BOOKMARKS before TURNS, because TURNS data may contain the literal placeholder
