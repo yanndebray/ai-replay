@@ -890,16 +890,41 @@ body.scroll-bottom .transcript {
 (function() {
   "use strict";
 
+  // ═══════════════════════════════════════════
+  // § CONFIG & CONSTANTS
+  // ═══════════════════════════════════════════
+
   const TURNS = /*TURNS_JSON*/[];
   const BOOKMARKS = /*BOOKMARKS_JSON*/[];
   const SCROLL_MODE = "/*SCROLL_MODE*/";
   const ANIMATE = true;
-  let currentTurn = 0;
-  let playing = false;
-  let playTimer = null;
-  let speed = /*INITIAL_SPEED*/1;
-  let animateCancelFn = null;
-  let animatePausedState = null; // { turnIndex, blockIdx } when paused mid-turn
+
+  const SPEED_STEPS = [0.5, 1, 2, 3, 5];
+  const ANIMATE_MIN_DELAY = 600;       // minimum ms between consecutive block reveals
+  const ANIMATE_FALLBACK_DELAY = 800;  // ms between blocks when timestamps missing
+  const ANIMATE_MAX_DELAY = 10000;     // max ms between blocks (before speed scaling)
+  const PEEK_OFFSET = 20;              // px of next dimmed turn visible below
+  const PAUSE_TOP_MS = 2500;           // pause at top of tall turn (ms, at 1x)
+  const PAUSE_BOTTOM_MS = 2500;        // pause at bottom of tall turn before advancing
+  const SHORT_TURN_DELAY_MS = 5000;    // delay between short turns
+  const SCROLL_SPEED_FACTOR = 6;       // scroll px-to-ms multiplier
+  const SCROLL_MIN_MS = 3000;          // min scroll duration for tall turns
+  const SCROLL_MAX_MS = 16000;         // max scroll duration for tall turns
+  const TALL_THRESHOLD = 50;           // px overflow to trigger tall-turn mode
+  const TURN_SCROLL_MS = 600;          // duration of scroll between turns
+
+  // Compute session start time from first turn
+  const sessionStart = TURNS.length > 0 && TURNS[0].timestamp
+    ? new Date(TURNS[0].timestamp).getTime()
+    : null;
+
+  // Build a map of turn index → bookmark label for quick lookup
+  const bookmarkMap = new Map();
+  for (const bm of BOOKMARKS) bookmarkMap.set(bm.turn, bm.label);
+
+  // ═══════════════════════════════════════════
+  // § DOM REFS
+  // ═══════════════════════════════════════════
 
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => document.querySelectorAll(sel);
@@ -911,10 +936,43 @@ body.scroll-bottom .transcript {
   const progressFill = $("#progress-fill");
   const progressText = $("#progress-text");
   const progressBar = $("#progress-bar");
+  const progressTooltip = $("#progress-tooltip");
   const speedBtn = $("#speed-btn");
-  const SPEED_STEPS = [0.5, 1, 2, 3, 5];
+  const speedBtn2 = $("#speed-btn2");
+  const speedWrap = $("#speed-wrap");
+  const speedPopover = $("#speed-popover");
+  const filterWrap = $("#filter-wrap");
+  const filterBtn = $("#filter-btn");
   const toggleThinking = $("#toggle-thinking");
   const toggleTools = $("#toggle-tools");
+  const toggleThinking2 = $("#toggle-thinking2");
+  const toggleTools2 = $("#toggle-tools2");
+  const moreWrap = $("#more-wrap");
+  const moreBtn = $("#more-btn");
+  const chapterWrap = $("#chapter-wrap");
+  const chapterBtn = $("#chapter-btn");
+  const chapterMenu = $("#chapter-menu");
+  const barTitle = $("#bar-title");
+  const controlsEl = $(".controls");
+
+  // ═══════════════════════════════════════════
+  // § STATE
+  // ═══════════════════════════════════════════
+
+  let currentTurn = 0;
+  let playing = false;
+  let playTimer = null;
+  let speed = /*INITIAL_SPEED*/1;
+  let animateCancelFn = null;
+  let animatePausedState = null; // { turnIndex, blockIdx } when paused mid-turn
+  let scrollProtectUntil = 0;    // timestamp — suppress scroll tracking after programmatic scrolls
+  let scrollAnim = null;
+  let expandPaused = false;
+  let scrollTick = false;
+
+  // ═══════════════════════════════════════════
+  // § UTILITIES
+  // ═══════════════════════════════════════════
 
   function escapeHtml(text) {
     const div = document.createElement("div");
@@ -1053,11 +1111,6 @@ body.scroll-bottom .transcript {
     btn.textContent = collapsed ? `Show more (${totalLines} lines)` : "Show less";
   };
 
-  // Compute session start time from first turn
-  const sessionStart = TURNS.length > 0 && TURNS[0].timestamp
-    ? new Date(TURNS[0].timestamp).getTime()
-    : null;
-
   function formatRelativeTime(ms) {
     const totalSec = Math.floor(ms / 1000);
     const h = Math.floor(totalSec / 3600);
@@ -1071,6 +1124,57 @@ body.scroll-bottom .transcript {
   function formatUtcTime(d) {
     return d.toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC");
   }
+
+  function getControlsHeight() { return controlsEl.offsetHeight; }
+  function getTopOffset() { return 0; } // controls are at bottom
+
+  // Get only .turn elements (excludes bookmark dividers)
+  function turnElements() { return transcript.querySelectorAll(".turn"); }
+
+  // ═══════════════════════════════════════════
+  // § BLOCK REVEAL HELPERS
+  // ═══════════════════════════════════════════
+
+  function revealAllBlocks(turnEl) {
+    for (const w of turnEl.querySelectorAll(".block-wrapper.block-hidden")) {
+      w.classList.remove("block-hidden");
+    }
+  }
+
+  function hideAllBlocks(turnEl) {
+    for (const w of turnEl.querySelectorAll(".block-wrapper")) {
+      w.classList.add("block-hidden");
+      w.classList.remove("block-revealing");
+    }
+  }
+
+  function updateBookmarkVisibility() {
+    for (const div of transcript.querySelectorAll(".bookmark-divider")) {
+      const t = parseInt(div.dataset.turn, 10);
+      div.classList.toggle("visible", t <= currentTurn);
+    }
+  }
+
+  // ═══════════════════════════════════════════
+  // § SPEED MANAGEMENT
+  // ═══════════════════════════════════════════
+
+  function updateSpeedLabel() {
+    speedBtn.textContent = speed + "x";
+    speedBtn2.textContent = speed + "x";
+    for (const btn of speedPopover.querySelectorAll("button")) {
+      btn.classList.toggle("active", parseFloat(btn.dataset.speed) === speed);
+    }
+  }
+
+  function setSpeed(newSpeed) {
+    speed = newSpeed;
+    updateSpeedLabel();
+  }
+
+  // ═══════════════════════════════════════════
+  // § RENDERING
+  // ═══════════════════════════════════════════
 
   function renderTurn(turn) {
     const el = document.createElement("div");
@@ -1202,79 +1306,6 @@ body.scroll-bottom .transcript {
     return el;
   }
 
-  function updateProgress() {
-    const total = TURNS.length;
-    const pct = total ? (currentTurn / total) * 100 : 0;
-    progressFill.style.width = pct + "%";
-    progressText.textContent = currentTurn + " of " + total;
-    // Update bookmark dot states
-    let activeDot = null;
-    for (const dot of progressBar.querySelectorAll(".bookmark-dot")) {
-      const turn = parseInt(dot.dataset.turn, 10);
-      const reached = turn <= currentTurn;
-      dot.classList.toggle("reached", reached);
-      dot.classList.remove("active");
-      if (reached) activeDot = dot;
-    }
-    if (activeDot) activeDot.classList.add("active");
-  }
-
-  const controlsEl = $(".controls");
-  function getControlsHeight() { return controlsEl.offsetHeight; }
-  function getTopOffset() { return 0; } // controls are at bottom
-  const PEEK_OFFSET = 20;           // px of next dimmed turn visible below
-  const PAUSE_TOP_MS = 2500;        // pause at top of tall turn (ms, at 1x)
-  const PAUSE_BOTTOM_MS = 2500;     // pause at bottom of tall turn before advancing
-  const SHORT_TURN_DELAY_MS = 5000; // delay between short turns
-  const SCROLL_SPEED_FACTOR = 6;    // scroll px-to-ms multiplier
-  const SCROLL_MIN_MS = 3000;       // min scroll duration for tall turns
-  const SCROLL_MAX_MS = 16000;      // max scroll duration for tall turns
-  const TALL_THRESHOLD = 50;        // px overflow to trigger tall-turn mode
-  const TURN_SCROLL_MS = 600;       // duration of scroll between turns
-
-  let scrollProtectUntil = 0; // timestamp — suppress scroll tracking after programmatic scrolls
-
-  function scrollToTurn(el, { anchorTop = false } = {}) {
-    scrollProtectUntil = Date.now() + 2000;
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        let targetY;
-        if (SCROLL_MODE === "bottom" && !anchorTop) {
-          // Terminal style: position turn's bottom above the controls bar
-          const absBottom = el.getBoundingClientRect().bottom + window.scrollY;
-          const barH = getControlsHeight();
-          const viewH = window.innerHeight - barH;
-          targetY = Math.max(0, absBottom - viewH + PEEK_OFFSET);
-        } else {
-          // Top anchor: position turn's top near the top of the viewport
-          const prev = el.previousElementSibling;
-          const scrollTarget = (prev && prev.classList.contains("bookmark-divider")) ? prev : el;
-          const absTop = scrollTarget.getBoundingClientRect().top + window.scrollY;
-          targetY = Math.max(0, absTop - getTopOffset() - PEEK_OFFSET);
-        }
-        const dist = Math.abs(targetY - window.scrollY);
-        if (dist < 2) return;
-        const duration = Math.min(TURN_SCROLL_MS + dist * 0.3, 1500);
-        smoothScrollTo(targetY, duration);
-      });
-    });
-  }
-
-  // Get only .turn elements (excludes bookmark dividers)
-  function turnElements() { return transcript.querySelectorAll(".turn"); }
-
-  function setActiveTurn(index) {
-    for (const el of $$(".turn.active")) el.classList.remove("active");
-    const turns = turnElements();
-    if (index >= 0 && index < turns.length) {
-      turns[index].classList.add("active");
-    }
-  }
-
-  // Build a map of turn index → bookmark label for quick lookup
-  const bookmarkMap = new Map();
-  for (const bm of BOOKMARKS) bookmarkMap.set(bm.turn, bm.label);
-
   function renderAllTurns() {
     for (let i = 0; i < TURNS.length; i++) {
       const turn = TURNS[i];
@@ -1291,48 +1322,21 @@ body.scroll-bottom .transcript {
     }
   }
 
-  function showUpTo(index, { anchorTop = false } = {}) {
-    currentTurn = Math.min(index, TURNS.length);
-    const turns = turnElements();
-    // Mark turns up to currentTurn as visible
-    for (let i = 0; i < turns.length; i++) {
-      const el = turns[i];
-      if (i < currentTurn) {
-        el.classList.add("visible");
-        // When seeking (not during animated playback), reveal all blocks instantly
-        if (ANIMATE && !playing) {
-          for (const w of el.querySelectorAll(".block-wrapper.block-hidden")) {
-            w.classList.remove("block-hidden");
-          }
-        }
-      } else {
-        el.classList.remove("visible");
-        // Re-hide blocks in turns that are no longer visible (for seek-backward)
-        if (ANIMATE) {
-          for (const w of el.querySelectorAll(".block-wrapper")) {
-            w.classList.add("block-hidden");
-            w.classList.remove("block-revealing");
-          }
-        }
-      }
-    }
-    // Update bookmark divider visibility
-    for (const div of transcript.querySelectorAll(".bookmark-divider")) {
-      const t = parseInt(div.dataset.turn, 10);
-      div.classList.toggle("visible", t <= currentTurn);
-    }
-    updateProgress();
-    setActiveTurn(currentTurn - 1);
+  function applyVisibility() {
+    const showThinking = toggleThinking.checked;
+    const showTools = toggleTools.checked;
 
-    // Pin active turn just below the controls bar, with a peek of previous turn
-    if (currentTurn > 0) {
-      const el = turns[currentTurn - 1];
-      if (el) scrollToTurn(el, { anchorTop });
+    for (const el of $$('[data-type="thinking"]')) {
+      el.style.display = showThinking ? "" : "none";
+    }
+    for (const el of $$('[data-type="tool"]')) {
+      el.style.display = showTools ? "" : "none";
     }
   }
 
-  // Smooth scroll animation for auto-play on tall turns
-  let scrollAnim = null;
+  // ═══════════════════════════════════════════
+  // § PLAYER ENGINE
+  // ═══════════════════════════════════════════
 
   function cancelScrollAnim() {
     if (scrollAnim) { cancelAnimationFrame(scrollAnim); scrollAnim = null; }
@@ -1362,66 +1366,62 @@ body.scroll-bottom .transcript {
     scrollAnim = requestAnimationFrame(step);
   }
 
-  function stepForward() {
-    if (playing) stopPlay();
-    animatePausedState = null;
-    if (currentTurn < TURNS.length) {
-      showUpTo(currentTurn + 1, { anchorTop: true });
-    }
+  function scrollToTurn(el, { anchorTop = false } = {}) {
+    scrollProtectUntil = Date.now() + 2000;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        let targetY;
+        if (SCROLL_MODE === "bottom" && !anchorTop) {
+          // Terminal style: position turn's bottom above the controls bar
+          const absBottom = el.getBoundingClientRect().bottom + window.scrollY;
+          const barH = getControlsHeight();
+          const viewH = window.innerHeight - barH;
+          targetY = Math.max(0, absBottom - viewH + PEEK_OFFSET);
+        } else {
+          // Top anchor: position turn's top near the top of the viewport
+          const prev = el.previousElementSibling;
+          const scrollTarget = (prev && prev.classList.contains("bookmark-divider")) ? prev : el;
+          const absTop = scrollTarget.getBoundingClientRect().top + window.scrollY;
+          targetY = Math.max(0, absTop - getTopOffset() - PEEK_OFFSET);
+        }
+        const dist = Math.abs(targetY - window.scrollY);
+        if (dist < 2) return;
+        const duration = Math.min(TURN_SCROLL_MS + dist * 0.3, 1500);
+        smoothScrollTo(targetY, duration);
+      });
+    });
   }
 
-  function stepBack() {
-    if (playing) stopPlay();
-    animatePausedState = null;
-    if (currentTurn > 0) {
-      showUpTo(currentTurn - 1, { anchorTop: true });
-    }
-  }
-
-  function startPlay() {
-    if (currentTurn >= TURNS.length) {
-      // Reset if at end
-      currentTurn = 0;
-      animatePausedState = null;
-      for (const el of transcript.children) el.classList.remove("visible");
-      if (ANIMATE) {
-        for (const w of transcript.querySelectorAll(".block-wrapper")) {
-          w.classList.add("block-hidden");
-          w.classList.remove("block-revealing");
+  function showUpTo(index, { anchorTop = false } = {}) {
+    currentTurn = Math.min(index, TURNS.length);
+    const turns = turnElements();
+    // Mark turns up to currentTurn as visible
+    for (let i = 0; i < turns.length; i++) {
+      const el = turns[i];
+      if (i < currentTurn) {
+        el.classList.add("visible");
+        // When seeking (not during animated playback), reveal all blocks instantly
+        if (ANIMATE && !playing) {
+          revealAllBlocks(el);
+        }
+      } else {
+        el.classList.remove("visible");
+        // Re-hide blocks in turns that are no longer visible (for seek-backward)
+        if (ANIMATE) {
+          hideAllBlocks(el);
         }
       }
     }
-    playing = true;
-    btnPlay.innerHTML = "&#9646;&#9646;";
-    btnPlay.classList.add("active");
+    updateBookmarkVisibility();
+    updateProgress();
+    setActiveTurn(currentTurn - 1);
 
-    // Resume mid-turn if we paused inside a block animation
-    if (animatePausedState && ANIMATE) {
-      const ps = animatePausedState;
-      animatePausedState = null;
-      animateCancelFn = animateTurn(ps.turnIndex, () => {
-        animateCancelFn = null;
-        if (!playing) return;
-        playStep();
-      }, ps.blockIdx);
-      return;
+    // Pin active turn just below the controls bar, with a peek of previous turn
+    if (currentTurn > 0) {
+      const el = turns[currentTurn - 1];
+      if (el) scrollToTurn(el, { anchorTop });
     }
-
-    playStep();
   }
-
-  function stopPlay() {
-    playing = false;
-    cancelScrollAnim();
-    btnPlay.innerHTML = "&#9654;";
-    btnPlay.classList.remove("active");
-    if (playTimer) { clearTimeout(playTimer); playTimer = null; }
-    if (animateCancelFn) { animateCancelFn(); animateCancelFn = null; }
-  }
-
-  const ANIMATE_MIN_DELAY = 600;       // minimum ms between consecutive block reveals
-  const ANIMATE_FALLBACK_DELAY = 800;  // ms between blocks when timestamps missing
-  const ANIMATE_MAX_DELAY = 10000;     // max ms between blocks (before speed scaling)
 
   // Adaptive wait: sleeps for gapMs/speed, but reads speed LIVE every tick
   // so changing speed mid-wait takes effect immediately.
@@ -1643,71 +1643,169 @@ body.scroll-bottom .transcript {
     });
   }
 
-  function applyVisibility() {
-    const showThinking = toggleThinking.checked;
-    const showTools = toggleTools.checked;
-
-    for (const el of $$('[data-type="thinking"]')) {
-      el.style.display = showThinking ? "" : "none";
+  function startPlay() {
+    if (currentTurn >= TURNS.length) {
+      // Reset if at end
+      currentTurn = 0;
+      animatePausedState = null;
+      for (const el of transcript.children) el.classList.remove("visible");
+      if (ANIMATE) {
+        for (const w of transcript.querySelectorAll(".block-wrapper")) {
+          w.classList.add("block-hidden");
+          w.classList.remove("block-revealing");
+        }
+      }
     }
-    for (const el of $$('[data-type="tool"]')) {
-      el.style.display = showTools ? "" : "none";
+    playing = true;
+    btnPlay.innerHTML = "&#9646;&#9646;";
+    btnPlay.classList.add("active");
+
+    // Resume mid-turn if we paused inside a block animation
+    if (animatePausedState && ANIMATE) {
+      const ps = animatePausedState;
+      animatePausedState = null;
+      animateCancelFn = animateTurn(ps.turnIndex, () => {
+        animateCancelFn = null;
+        if (!playing) return;
+        playStep();
+      }, ps.blockIdx);
+      return;
+    }
+
+    playStep();
+  }
+
+  function stopPlay() {
+    playing = false;
+    cancelScrollAnim();
+    btnPlay.innerHTML = "&#9654;";
+    btnPlay.classList.remove("active");
+    if (playTimer) { clearTimeout(playTimer); playTimer = null; }
+    if (animateCancelFn) { animateCancelFn(); animateCancelFn = null; }
+  }
+
+  function stepForward() {
+    if (playing) stopPlay();
+    animatePausedState = null;
+    if (currentTurn < TURNS.length) {
+      showUpTo(currentTurn + 1, { anchorTop: true });
     }
   }
 
-  // More menu (mobile/iframe)
-  const moreWrap = $("#more-wrap");
-  const moreBtn = $("#more-btn");
-  moreBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    moreWrap.classList.toggle("open");
-  });
+  function stepBack() {
+    if (playing) stopPlay();
+    animatePausedState = null;
+    if (currentTurn > 0) {
+      showUpTo(currentTurn - 1, { anchorTop: true });
+    }
+  }
+
+  // ═══════════════════════════════════════════
+  // § PROGRESS & NAVIGATION
+  // ═══════════════════════════════════════════
+
+  function updateProgress() {
+    const total = TURNS.length;
+    const pct = total ? (currentTurn / total) * 100 : 0;
+    progressFill.style.width = pct + "%";
+    progressText.textContent = currentTurn + " of " + total;
+    // Update bookmark dot states
+    let activeDot = null;
+    for (const dot of progressBar.querySelectorAll(".bookmark-dot")) {
+      const turn = parseInt(dot.dataset.turn, 10);
+      const reached = turn <= currentTurn;
+      dot.classList.toggle("reached", reached);
+      dot.classList.remove("active");
+      if (reached) activeDot = dot;
+    }
+    if (activeDot) activeDot.classList.add("active");
+  }
+
+  function setActiveTurn(index) {
+    for (const el of $$(".turn.active")) el.classList.remove("active");
+    const turns = turnElements();
+    if (index >= 0 && index < turns.length) {
+      turns[index].classList.add("active");
+    }
+  }
+
+  function seekFromX(clientX) {
+    const rect = progressBar.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const target = Math.round(pct * TURNS.length);
+    showUpTo(target);
+  }
+
+  // Scroll-based activation: as user scrolls down, reveal new turns
+  function onScrollUpdate() {
+    if (playing || Date.now() < scrollProtectUntil) return;
+    const turns = turnElements();
+    if (!turns.length) return;
+    const viewMid = window.innerHeight / 2;
+
+    let best = -1;
+    for (let i = 0; i < turns.length; i++) {
+      const rect = turns[i].getBoundingClientRect();
+      if (rect.top < viewMid) best = i;
+    }
+    if (best >= 0) {
+      const idx = best + 1; // 1-based
+      if (idx !== currentTurn) {
+        if (idx > currentTurn) {
+          // Scrolling forward — reveal new turns
+          currentTurn = idx;
+          for (let i = 0; i < turns.length; i++) {
+            turns[i].classList.toggle("visible", i < currentTurn);
+            if (ANIMATE && i < currentTurn) {
+              revealAllBlocks(turns[i]);
+            }
+          }
+          updateBookmarkVisibility();
+        } else {
+          // Scrolling backward — update active turn (don't hide already-revealed turns)
+          currentTurn = idx;
+        }
+        updateProgress();
+        setActiveTurn(currentTurn - 1);
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════
+  // § UI WIRING
+  // ═══════════════════════════════════════════
+
+  // Popover management — single close-all + single document click handler
+  const popoverWraps = [speedWrap, filterWrap, chapterWrap, moreWrap].filter(Boolean);
+
+  function closeAllPopovers(exceptEl) {
+    for (const el of popoverWraps) {
+      if (exceptEl && el === exceptEl) continue;
+      el.classList.remove("open");
+    }
+  }
+
   document.addEventListener("click", (e) => {
-    if (!moreWrap.contains(e.target)) moreWrap.classList.remove("open");
+    for (const wrap of popoverWraps) {
+      if (wrap.classList.contains("open") && wrap.contains(e.target)) return;
+    }
+    closeAllPopovers();
   });
 
-  // Sync more-popover controls with main controls
-  const speedBtn2 = $("#speed-btn2");
-  const toggleThinking2 = $("#toggle-thinking2");
-  const toggleTools2 = $("#toggle-tools2");
-  speedBtn2.addEventListener("click", () => {
-    const idx = SPEED_STEPS.indexOf(speed);
-    speed = SPEED_STEPS[(idx + 1) % SPEED_STEPS.length];
-    updateSpeedLabel();
-  });
+  // Close all popovers when iframe loses focus
+  window.addEventListener("blur", () => { closeAllPopovers(); });
 
-  toggleThinking2.addEventListener("change", () => {
-    toggleThinking.checked = toggleThinking2.checked;
-    applyVisibility();
-  });
-  toggleTools2.addEventListener("change", () => {
-    toggleTools.checked = toggleTools2.checked;
-    applyVisibility();
-  });
-
-  // Event listeners
+  // Play / Step buttons
   btnPlay.addEventListener("click", () => playing ? stopPlay() : startPlay());
   btnNext.addEventListener("click", stepForward);
   btnPrev.addEventListener("click", stepBack);
 
-  // Popover elements
-  const speedWrap = $("#speed-wrap");
-  const speedPopover = $("#speed-popover");
-  const filterWrap = $("#filter-wrap");
-  const filterBtn = $("#filter-btn");
-  const chapterWrap = $("#chapter-wrap");
-  const chapterBtn = $("#chapter-btn");
-  const chapterMenu = $("#chapter-menu");
-  filterBtn.addEventListener("click", (e) => {
+  // Speed popover toggle
+  speedBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    speedWrap.classList.remove("open");
-    if (chapterWrap) chapterWrap.classList.remove("open");
-    filterWrap.classList.toggle("open");
-  });
-  document.addEventListener("click", (e) => {
-    if (!filterWrap.contains(e.target)) {
-      filterWrap.classList.remove("open");
-    }
+    const wasOpen = speedWrap.classList.contains("open");
+    closeAllPopovers();
+    if (!wasOpen) speedWrap.classList.add("open");
   });
 
   // Populate speed popover with buttons
@@ -1718,46 +1816,53 @@ body.scroll-bottom .transcript {
     if (s === speed) btn.classList.add("active");
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
-      speed = s;
-      updateSpeedLabel();
+      setSpeed(s);
       speedWrap.classList.remove("open");
     });
     speedPopover.appendChild(btn);
   }
 
-  function updateSpeedLabel() {
-    speedBtn.textContent = speed + "x";
-    speedBtn2.textContent = speed + "x";
-    for (const btn of speedPopover.querySelectorAll("button")) {
-      btn.classList.toggle("active", parseFloat(btn.dataset.speed) === speed);
-    }
-  }
-
-  speedBtn.addEventListener("click", (e) => {
+  // Filter popover toggle
+  filterBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    filterWrap.classList.remove("open");
-    if (chapterWrap) chapterWrap.classList.remove("open");
-    speedWrap.classList.toggle("open");
-  });
-  document.addEventListener("click", (e) => {
-    if (!speedWrap.contains(e.target)) speedWrap.classList.remove("open");
+    const wasOpen = filterWrap.classList.contains("open");
+    closeAllPopovers();
+    if (!wasOpen) filterWrap.classList.add("open");
   });
 
-  // Close all popovers when iframe loses focus
-  window.addEventListener("blur", () => {
-    speedWrap.classList.remove("open");
-    filterWrap.classList.remove("open");
-    if (chapterWrap) chapterWrap.classList.remove("open");
-    moreWrap.classList.remove("open");
+  // Filter checkboxes
+  toggleThinking.addEventListener("change", applyVisibility);
+  toggleTools.addEventListener("change", applyVisibility);
+
+  // Chapter popover toggle (wired in bookmarks section below)
+
+  // More menu (mobile/iframe) toggle
+  moreBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const wasOpen = moreWrap.classList.contains("open");
+    closeAllPopovers();
+    if (!wasOpen) moreWrap.classList.add("open");
   });
 
-  function seekFromX(clientX) {
-    const rect = progressBar.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    const target = Math.round(pct * TURNS.length);
-    showUpTo(target);
+  // Sync more-popover controls with main controls
+  speedBtn2.addEventListener("click", () => {
+    const idx = SPEED_STEPS.indexOf(speed);
+    setSpeed(SPEED_STEPS[(idx + 1) % SPEED_STEPS.length]);
+  });
+
+  function syncCheckbox(primary, secondary) {
+    secondary.addEventListener("change", () => {
+      primary.checked = secondary.checked;
+      applyVisibility();
+    });
+    primary.addEventListener("change", () => {
+      secondary.checked = primary.checked;
+    });
   }
+  syncCheckbox(toggleThinking, toggleThinking2);
+  syncCheckbox(toggleTools, toggleTools2);
 
+  // Progress bar interactions
   progressBar.addEventListener("click", (e) => seekFromX(e.clientX));
 
   // Touch drag on progress bar
@@ -1771,7 +1876,6 @@ body.scroll-bottom .transcript {
   }, { passive: false });
 
   // Progress bar hover tooltip
-  const progressTooltip = $("#progress-tooltip");
   progressBar.addEventListener("mousemove", (e) => {
     const rect = progressBar.getBoundingClientRect();
     const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
@@ -1788,11 +1892,7 @@ body.scroll-bottom .transcript {
     progressTooltip.style.left = left + "px";
   });
 
-  toggleThinking.addEventListener("change", applyVisibility);
-  toggleTools.addEventListener("change", applyVisibility);
-
   // Expanding/collapsing sections pauses playback
-  let expandPaused = false;
   transcript.addEventListener("click", (e) => {
     expandPaused = false;
     if (playing && (e.target.closest(".turn-header") || e.target.closest(".thinking-header") || e.target.closest(".tool-header") || e.target.closest(".tool-group-header") || e.target.closest(".collapsible-toggle"))) {
@@ -1816,9 +1916,7 @@ body.scroll-bottom .transcript {
       if (i < currentTurn) {
         el.classList.add("visible");
         if (ANIMATE) {
-          for (const w of el.querySelectorAll(".block-wrapper.block-hidden")) {
-            w.classList.remove("block-hidden");
-          }
+          revealAllBlocks(el);
         }
       } else {
         el.classList.remove("visible");
@@ -1837,7 +1935,6 @@ body.scroll-bottom .transcript {
   });
 
   // Iframe detection — compact mode + title as pop-out link
-  const barTitle = $("#bar-title");
   let inIframe = false;
   try { inIframe = window !== window.top; } catch (e) { inIframe = true; }
   if (inIframe) {
@@ -1849,6 +1946,17 @@ body.scroll-bottom .transcript {
       window.open(url, "_blank");
     });
   }
+
+  // Scroll handler
+  window.addEventListener("scroll", () => {
+    if (!scrollTick) {
+      scrollTick = true;
+      requestAnimationFrame(() => {
+        onScrollUpdate();
+        scrollTick = false;
+      });
+    }
+  }, { passive: true });
 
   // --- Bookmarks / Chapters ---
   if (BOOKMARKS.length > 0) {
@@ -1892,67 +2000,11 @@ body.scroll-bottom .transcript {
 
     chapterBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      speedWrap.classList.remove("open");
-      filterWrap.classList.remove("open");
-      chapterWrap.classList.toggle("open");
-    });
-    document.addEventListener("click", (e) => {
-      if (!chapterWrap.contains(e.target)) {
-        chapterWrap.classList.remove("open");
-      }
+      const wasOpen = chapterWrap.classList.contains("open");
+      closeAllPopovers();
+      if (!wasOpen) chapterWrap.classList.add("open");
     });
   }
-
-  // Scroll-based activation: as user scrolls down, reveal new turns
-  function onScrollUpdate() {
-    if (playing || Date.now() < scrollProtectUntil) return;
-    const turns = turnElements();
-    if (!turns.length) return;
-    const viewMid = window.innerHeight / 2;
-
-    let best = -1;
-    for (let i = 0; i < turns.length; i++) {
-      const rect = turns[i].getBoundingClientRect();
-      if (rect.top < viewMid) best = i;
-    }
-    if (best >= 0) {
-      const idx = best + 1; // 1-based
-      if (idx !== currentTurn) {
-        if (idx > currentTurn) {
-          // Scrolling forward — reveal new turns
-          currentTurn = idx;
-          for (let i = 0; i < turns.length; i++) {
-            turns[i].classList.toggle("visible", i < currentTurn);
-            if (ANIMATE && i < currentTurn) {
-              for (const w of turns[i].querySelectorAll(".block-wrapper.block-hidden")) {
-                w.classList.remove("block-hidden");
-              }
-            }
-          }
-          for (const div of transcript.querySelectorAll(".bookmark-divider")) {
-            const t = parseInt(div.dataset.turn, 10);
-            div.classList.toggle("visible", t <= currentTurn);
-          }
-        } else {
-          // Scrolling backward — update active turn (don't hide already-revealed turns)
-          currentTurn = idx;
-        }
-        updateProgress();
-        setActiveTurn(currentTurn - 1);
-      }
-    }
-  }
-
-  let scrollTick = false;
-  window.addEventListener("scroll", () => {
-    if (!scrollTick) {
-      scrollTick = true;
-      requestAnimationFrame(() => {
-        onScrollUpdate();
-        scrollTick = false;
-      });
-    }
-  }, { passive: true });
 
   // Init
   if (SCROLL_MODE === "bottom") document.body.classList.add("scroll-bottom");
