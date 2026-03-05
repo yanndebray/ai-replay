@@ -1,5 +1,10 @@
 # claude-replay
 
+![Claude Code](https://img.shields.io/badge/Claude_Code-replay-blue)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+![Node.js](https://img.shields.io/badge/node-18%2B-green.svg)
+![Zero Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)
+
 > Community tool — not affiliated with or endorsed by Anthropic.
 
 Claude Code sessions are great for development, but hard to share. Screen recordings are bulky and transcripts are hard to navigate.
@@ -197,7 +202,7 @@ The output is a single HTML file with no external dependencies. Embed it in blog
 Generated HTML files use two layers of optimization (zero external dependencies):
 
 - **Minified CSS/JS** — the player template is minified with esbuild (mangled variable names, whitespace removed). Use `--no-minify` for readable output.
-- **Compressed data** — transcript JSON is deflate-compressed and base64-encoded, typically reducing output size by ~60-70%. The browser decompresses it natively at load time.
+- **Compressed data** — transcript JSON is deflate-compressed and base64-encoded, typically reducing output size by ~60-70%. The browser decompresses it natively at load time using `DecompressionStream` (Chrome 80+, Firefox 113+, Safari 16.4+). For older browsers, use `--no-compress` to embed raw JSON.
 
 ### Development
 
@@ -251,4 +256,4 @@ Claude Code transcripts use one JSON object per line with a `type` field:
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/es617/claude-replay/blob/main/LICENSE)
