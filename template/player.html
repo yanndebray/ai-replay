@@ -149,6 +149,7 @@ body.in-iframe .bar-title:hover {
   font-size: 11px;
   color: var(--text-dim);
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 
@@ -289,11 +290,9 @@ body.in-iframe .bar-title:hover {
 @media (max-width: 600px) {
   body:not(.in-iframe) #more-btn { display: inline-flex; }
   body:not(.in-iframe) .controls-secondary { display: none; }
-  body:not(.in-iframe) .progress-text { display: none; }
   body:not(.in-iframe) .chapter-wrap { display: none !important; }
 }
 /* iframe */
-body.in-iframe .progress-text { display: none; }
 /* Narrow iframes: collapse into more menu */
 @media (max-width: 400px) {
   body.in-iframe #more-btn { display: inline-flex; }
@@ -998,10 +997,35 @@ body.in-iframe .progress-text { display: none; }
   const SHORT_TURN_DELAY_MS = 5000;    // delay between turns during playback
   const TURN_SCROLL_MS = 600;          // duration of scroll between turns
 
-  // Compute session start time from first turn
+  // Compute session timestamps for elapsed/total timer
   const sessionStart = TURNS.length > 0 && TURNS[0].timestamp
     ? new Date(TURNS[0].timestamp).getTime()
     : null;
+  // For each turn: start time (user message) and end time (last block)
+  const turnStartTimes = TURNS.map((t) =>
+    t.timestamp ? new Date(t.timestamp).getTime() : 0
+  );
+  const turnEndTimes = TURNS.map((t) => {
+    let latest = t.timestamp ? new Date(t.timestamp).getTime() : 0;
+    for (const b of t.blocks || []) {
+      if (b.timestamp) latest = Math.max(latest, new Date(b.timestamp).getTime());
+      if (b.tool_call?.resultTimestamp) latest = Math.max(latest, new Date(b.tool_call.resultTimestamp).getTime());
+    }
+    return latest;
+  });
+  const sessionTotalMs = sessionStart && turnEndTimes.length
+    ? turnEndTimes[turnEndTimes.length - 1] - sessionStart
+    : 0;
+
+  function formatTime(ms) {
+    if (ms <= 0) return "0:00";
+    const totalSec = Math.round(ms / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    if (h > 0) return h + ":" + String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+    return m + ":" + String(s).padStart(2, "0");
+  }
 
   // Build a map of turn index → bookmark label for quick lookup
   const bookmarkMap = new Map();
@@ -1055,6 +1079,8 @@ body.in-iframe .progress-text { display: none; }
   let scrollAnim = null;
   let expandPaused = false;
   let scrollTick = false;
+  let timerInterval = null;
+  let displayedTimeMs = 0;  // session elapsed time shown in timer
 
   // ═══════════════════════════════════════════
   // § UTILITIES
@@ -1197,15 +1223,6 @@ body.in-iframe .progress-text { display: none; }
     btn.textContent = collapsed ? `Show more (${totalLines} lines)` : "Show less";
   };
 
-  function formatRelativeTime(ms) {
-    const totalSec = Math.floor(ms / 1000);
-    const h = Math.floor(totalSec / 3600);
-    const m = Math.floor((totalSec % 3600) / 60);
-    const s = totalSec % 60;
-    if (h > 0) return `+ ${h}h ${m}m ${s}s`;
-    if (m > 0) return `+ ${m}m ${s}s`;
-    return `+ ${s}s`;
-  }
 
   function formatUtcTime(d) {
     return d.toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC");
@@ -1289,7 +1306,7 @@ body.in-iframe .progress-text { display: none; }
       absStr = formatUtcTime(d);
       if (sessionStart != null) {
         const delta = d.getTime() - sessionStart;
-        relStr = delta > 0 ? formatRelativeTime(delta) : "start";
+        relStr = formatTime(delta);
       }
     }
     const tsHtml = relStr || absStr
@@ -1700,6 +1717,7 @@ body.in-iframe .progress-text { display: none; }
       }
     }
     playing = true;
+    startTimer();
     btnPlay.innerHTML = "&#9646;&#9646;";
     btnPlay.classList.add("active");
 
@@ -1749,6 +1767,7 @@ body.in-iframe .progress-text { display: none; }
 
   function stopPlay() {
     playing = false;
+    stopTimer();
     cancelScrollAnim();
     btnPlay.innerHTML = "&#9654;";
     btnPlay.classList.remove("active");
@@ -1834,6 +1853,7 @@ body.in-iframe .progress-text { display: none; }
       if (prev) prev.classList.remove("block-active");
       w.classList.remove("block-hidden");
       w.classList.add("block-revealing", "block-active");
+      syncTimerToBlock();
       scrollIntoView(w);
     } else if (currentTurn < TURNS.length) {
       // All blocks revealed — advance to next turn with blocks hidden
@@ -1874,6 +1894,7 @@ body.in-iframe .progress-text { display: none; }
         } else {
           scrollToBottom(turnEl);
         }
+        syncTimerToBlock();
         return;
       }
     }
@@ -1905,7 +1926,9 @@ body.in-iframe .progress-text { display: none; }
   function updateProgress() {
     const pct = Math.max(0, turnToPct(currentTurn) * 100);
     progressFill.style.width = pct + "%";
-    progressText.textContent = currentTurn + " of " + TURNS.length;
+    // Sync timer to current position
+    syncTimerToBlock();
+    if (playing) startTimer();
     // Update turn dot states
     for (const dot of progressBar.querySelectorAll(".turn-dot")) {
       const turn = parseInt(dot.dataset.turn, 10);
@@ -1921,6 +1944,39 @@ body.in-iframe .progress-text { display: none; }
       if (reached) activeDot = dot;
     }
     if (activeDot) activeDot.classList.add("active");
+  }
+
+  function updateTimerDisplay() {
+    progressText.textContent = formatTime(displayedTimeMs) + " / " + formatTime(sessionTotalMs);
+  }
+
+  function startTimer() {
+    if (timerInterval) return;
+    timerInterval = setInterval(() => {
+      // Tick forward scaled by playback speed, capped at session total
+      displayedTimeMs = Math.min(displayedTimeMs + 1000 * speed, sessionTotalMs);
+      updateTimerDisplay();
+      if (displayedTimeMs >= sessionTotalMs) stopTimer();
+    }, 1000);
+  }
+
+  /** Update timer based on fraction of blocks revealed in current turn. */
+  function syncTimerToBlock() {
+    if (!sessionStart || currentTurn <= 0) { displayedTimeMs = 0; updateTimerDisplay(); return; }
+    const idx = currentTurn - 1;
+    const turnEl = turnElements()[idx];
+    if (!turnEl) return;
+    const total = turnEl.querySelectorAll(".block-wrapper").length;
+    const revealed = turnEl.querySelectorAll(".block-wrapper:not(.block-hidden)").length;
+    const tStart = turnStartTimes[idx] - sessionStart;
+    const tEnd = turnEndTimes[idx] - sessionStart;
+    const frac = total > 0 ? revealed / total : 0;
+    displayedTimeMs = Math.round(tStart + (tEnd - tStart) * frac);
+    updateTimerDisplay();
+  }
+
+  function stopTimer() {
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   }
 
   function setActiveTurn(index) {
@@ -2092,7 +2148,7 @@ body.in-iframe .progress-text { display: none; }
     let label = `#${turnIdx}`;
     if (turn && turn.timestamp && sessionStart != null) {
       const delta = new Date(turn.timestamp).getTime() - sessionStart;
-      if (delta > 0) label += ` · ${formatRelativeTime(delta)}`;
+      label += ` · ${formatTime(delta)}`;
     }
     progressTooltip.textContent = label;
     // Position tooltip, clamped to bar edges
