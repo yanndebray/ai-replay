@@ -1048,6 +1048,7 @@ body.scroll-bottom .transcript {
   const chapterMenu = $("#chapter-menu");
   const barTitle = $("#bar-title");
   const controlsEl = $(".controls");
+  const splash = $("#splash");
 
   // ═══════════════════════════════════════════
   // § STATE
@@ -1221,6 +1222,19 @@ body.scroll-bottom .transcript {
 
   function getControlsHeight() { return controlsEl.offsetHeight; }
   function getTopOffset() { return 0; } // controls are at bottom
+
+  // Splash screen helpers
+  function showSplash() { splash.classList.remove("hidden"); }
+  function hideSplash() { splash.classList.add("hidden"); }
+  function isSplashVisible() { return !splash.classList.contains("hidden"); }
+
+  // Progress bar math: map between 1-based turn numbers and 0-1 percentages
+  function turnToPct(turn) {
+    return TURNS.length > 1 ? (turn - 1) / (TURNS.length - 1) : (turn ? 1 : 0);
+  }
+  function pctToTurn(pct) {
+    return Math.min(TURNS.length, Math.round(pct * (TURNS.length - 1)) + 1);
+  }
 
   // Get only .turn elements (excludes bookmark dividers)
   function turnElements() { return transcript.querySelectorAll(".turn"); }
@@ -1761,11 +1775,7 @@ body.scroll-bottom .transcript {
   }
 
   function startPlay() {
-    // Dismiss splash screen if visible
-    const sp = document.getElementById("splash");
-    if (sp && !sp.classList.contains("hidden")) {
-      sp.classList.add("hidden");
-    }
+    hideSplash();
 
     if (currentTurn >= TURNS.length) {
       // Reset if at end
@@ -1807,25 +1817,28 @@ body.scroll-bottom .transcript {
     if (animateCancelFn) { animateCancelFn(); animateCancelFn = null; }
   }
 
-  function stepForward() {
+  /**
+   * Unified navigation: all manual navigation (buttons, seek, chapters, clicks)
+   * goes through here. Stops playback, clears mid-turn state, manages splash.
+   */
+  function navigate(targetTurn, opts) {
     if (playing) stopPlay();
     animatePausedState = null;
-    if (currentTurn < TURNS.length) {
-      showUpTo(currentTurn + 1, { anchorTop: true });
+    if (targetTurn <= 0) {
+      showUpTo(0);
+      showSplash();
+    } else {
+      hideSplash();
+      showUpTo(Math.min(targetTurn, TURNS.length), opts);
     }
   }
 
+  function stepForward() {
+    if (currentTurn < TURNS.length) navigate(currentTurn + 1, { anchorTop: true });
+  }
+
   function stepBack() {
-    if (playing) stopPlay();
-    animatePausedState = null;
-    if (currentTurn > 1) {
-      showUpTo(currentTurn - 1, { anchorTop: true });
-    } else if (currentTurn === 1) {
-      // Go back to splash
-      showUpTo(0);
-      const sp = document.getElementById("splash");
-      if (sp) sp.classList.remove("hidden");
-    }
+    navigate(currentTurn - 1, { anchorTop: true });
   }
 
   // ═══════════════════════════════════════════
@@ -1833,10 +1846,9 @@ body.scroll-bottom .transcript {
   // ═══════════════════════════════════════════
 
   function updateProgress() {
-    const total = TURNS.length;
-    const pct = total > 1 ? Math.max(0, ((currentTurn - 1) / (total - 1)) * 100) : (currentTurn ? 100 : 0);
+    const pct = Math.max(0, turnToPct(currentTurn) * 100);
     progressFill.style.width = pct + "%";
-    progressText.textContent = currentTurn + " of " + total;
+    progressText.textContent = currentTurn + " of " + TURNS.length;
     // Update turn dot states
     for (const dot of progressBar.querySelectorAll(".turn-dot")) {
       const turn = parseInt(dot.dataset.turn, 10);
@@ -1865,23 +1877,18 @@ body.scroll-bottom .transcript {
   function seekFromX(clientX) {
     const rect = progressBar.getBoundingClientRect();
     const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    const target = Math.min(TURNS.length, Math.round(pct * (TURNS.length - 1)) + 1);
-    const sp = document.getElementById("splash");
-    if (target <= 1 && pct < 0.05 && sp) {
-      // Clicking at the very start: show splash
-      showUpTo(0);
-      sp.classList.remove("hidden");
+    const target = pctToTurn(pct);
+    if (target <= 1 && pct < 0.05) {
+      navigate(0);
     } else {
-      if (sp) sp.classList.add("hidden");
-      showUpTo(Math.max(1, target), { anchorTop: true });
+      navigate(Math.max(1, target), { anchorTop: true });
     }
   }
 
   // Scroll-based activation: as user scrolls down, reveal new turns
   function onScrollUpdate() {
     if (playing || Date.now() < scrollProtectUntil) return;
-    const sp = document.getElementById("splash");
-    if (sp && !sp.classList.contains("hidden")) return;
+    if (isSplashVisible()) return;
     const turns = turnElements();
     if (!turns.length) return;
     const viewMid = window.innerHeight / 2;
@@ -2022,7 +2029,7 @@ body.scroll-bottom .transcript {
   progressBar.addEventListener("mousemove", (e) => {
     const rect = progressBar.getBoundingClientRect();
     const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const turnIdx = Math.max(1, Math.round(pct * TURNS.length));
+    const turnIdx = pctToTurn(pct);
     const turn = TURNS[turnIdx - 1];
     let label = `#${turnIdx}`;
     if (turn && turn.timestamp && sessionStart != null) {
@@ -2050,23 +2057,7 @@ body.scroll-bottom .transcript {
     const turn = e.target.closest(".turn");
     if (!turn) return;
     const idx = parseInt(turn.dataset.index, 10);
-    // Mark turns up to clicked one as visible, without scrolling
-    animatePausedState = null;
-    currentTurn = idx;
-    const turns = turnElements();
-    for (let i = 0; i < turns.length; i++) {
-      const el = turns[i];
-      if (i < currentTurn) {
-        el.classList.add("visible");
-        if (ANIMATE) {
-          revealAllBlocks(el);
-        }
-      } else {
-        el.classList.remove("visible");
-      }
-    }
-    updateProgress();
-    setActiveTurn(currentTurn - 1);
+    navigate(idx, { skipScroll: true });
   });
 
   // Keyboard shortcuts
@@ -2102,12 +2093,11 @@ body.scroll-bottom .transcript {
   }, { passive: true });
 
   // --- Turn dots on progress bar ---
-  const lastIdx = TURNS.length - 1;
   for (let i = 0; i < TURNS.length; i++) {
     const dot = document.createElement("div");
     dot.className = "turn-dot";
     dot.dataset.turn = i + 1;
-    dot.style.left = (lastIdx > 0 ? (i / lastIdx) * 100 : 0) + "%";
+    dot.style.left = turnToPct(i + 1) * 100 + "%";
     progressBar.appendChild(dot);
   }
 
@@ -2120,8 +2110,7 @@ body.scroll-bottom .transcript {
       const dot = document.createElement("div");
       dot.className = "bookmark-dot";
       dot.dataset.turn = bm.turn;
-      const pct = TURNS.length > 1 ? ((bm.turn - 1) / (TURNS.length - 1)) * 100 : 0;
-      dot.style.left = pct + "%";
+      dot.style.left = turnToPct(bm.turn) * 100 + "%";
       progressBar.appendChild(dot);
     }
 
@@ -2135,7 +2124,7 @@ body.scroll-bottom .transcript {
       item.className = "chapter-item";
       item.innerHTML = `<span class="chapter-item-turn">#${bm.turn}</span><span class="chapter-item-label">${escapeHtml(bm.label)}</span>`;
       item.addEventListener("click", () => {
-        showUpTo(bm.turn, { anchorTop: true });
+        navigate(bm.turn, { anchorTop: true });
         chapterWrap.classList.remove("open");
       });
       chapterMenu.appendChild(item);
@@ -2145,7 +2134,7 @@ body.scroll-bottom .transcript {
       item2.className = "chapter-item";
       item2.innerHTML = item.innerHTML;
       item2.addEventListener("click", () => {
-        showUpTo(bm.turn, { anchorTop: true });
+        navigate(bm.turn, { anchorTop: true });
         moreWrap.classList.remove("open");
       });
       moreChapterList.appendChild(item2);
@@ -2160,7 +2149,6 @@ body.scroll-bottom .transcript {
   }
 
   // Init
-  const splash = $("#splash");
   if (SCROLL_MODE === "bottom") document.body.classList.add("scroll-bottom");
   transcript.textContent = "";
   transcript.style.opacity = "";
@@ -2169,11 +2157,12 @@ body.scroll-bottom .transcript {
   const hashMatch = location.hash.match(/turn=(\d+)/);
   if (hashMatch) {
     // Deep link: skip splash, jump directly
-    splash.classList.add("hidden");
+    hideSplash();
     const startTurn = Math.min(parseInt(hashMatch[1], 10), TURNS.length);
     if (startTurn > 0) showUpTo(startTurn);
   }
   // else: splash is visible, currentTurn = 0, progress at 0%
+  updateProgress();
 
   $("#splash-play").addEventListener("click", () => startPlay());
 })();
