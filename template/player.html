@@ -1502,7 +1502,7 @@ body.scroll-bottom .transcript {
     });
   }
 
-  function showUpTo(index, { anchorTop = false, skipScroll = false } = {}) {
+  function showUpTo(index, { anchorTop = false, skipScroll = false, hideActiveBlocks = false } = {}) {
     currentTurn = Math.min(index, TURNS.length);
     const turns = turnElements();
     // Mark turns up to currentTurn as visible
@@ -1510,9 +1510,13 @@ body.scroll-bottom .transcript {
       const el = turns[i];
       if (i < currentTurn) {
         el.classList.add("visible");
-        // When seeking (not during animated playback), reveal all blocks instantly
         if (ANIMATE && !playing) {
-          revealAllBlocks(el);
+          // Active turn (last visible): optionally keep blocks hidden
+          if (hideActiveBlocks && i === currentTurn - 1) {
+            hideAllBlocks(el);
+          } else {
+            revealAllBlocks(el);
+          }
         }
       } else {
         el.classList.remove("visible");
@@ -1793,6 +1797,12 @@ body.scroll-bottom .transcript {
     btnPlay.innerHTML = "&#9646;&#9646;";
     btnPlay.classList.add("active");
 
+    // Scroll current turn into view so it's clear playback started
+    if (currentTurn > 0) {
+      const el = turnElements()[currentTurn - 1];
+      if (el) scrollToBottom(el);
+    }
+
     // Resume mid-turn if we paused inside a block animation
     if (animatePausedState && ANIMATE) {
       const ps = animatePausedState;
@@ -1833,12 +1843,130 @@ body.scroll-bottom .transcript {
     }
   }
 
+  // Scroll just enough to keep an element visible above the controls bar
+  function scrollIntoView(el) {
+    requestAnimationFrame(() => {
+      const barH = getControlsHeight();
+      const viewBottom = window.innerHeight - barH;
+      const rect = el.getBoundingClientRect();
+      if (rect.bottom > viewBottom) {
+        cancelScrollAnim();
+        const targetY = rect.bottom + window.scrollY - viewBottom + PEEK_OFFSET;
+        window.scrollTo({ top: targetY, behavior: "smooth" });
+      } else if (rect.top < 0) {
+        cancelScrollAnim();
+        const targetY = rect.top + window.scrollY - PEEK_OFFSET;
+        window.scrollTo({ top: Math.max(0, targetY), behavior: "smooth" });
+      }
+    });
+  }
+
+  // Scroll so the element's bottom sits just above the controls bar
+  function scrollToBottom(el) {
+    requestAnimationFrame(() => {
+      const barH = getControlsHeight();
+      const viewH = window.innerHeight - barH;
+      const absBottom = el.getBoundingClientRect().bottom + window.scrollY;
+      const targetY = Math.max(0, absBottom - viewH + PEEK_OFFSET);
+      cancelScrollAnim();
+      window.scrollTo({ top: targetY, behavior: "smooth" });
+    });
+  }
+
   function stepForward() {
-    if (currentTurn < TURNS.length) navigate(currentTurn + 1, { anchorTop: true });
+    if (playing) stopPlay();
+    animatePausedState = null;
+    scrollProtectUntil = Date.now() + 2000;
+
+    if (currentTurn === 0) {
+      // From splash: show turn 1 with blocks hidden
+      hideSplash();
+      currentTurn = 1;
+      const turns = turnElements();
+      if (turns[0]) {
+        turns[0].classList.add("visible");
+        hideAllBlocks(turns[0]);
+        scrollToBottom(turns[0]);
+      }
+      updateBookmarkVisibility();
+      updateProgress();
+      setActiveTurn(0);
+      return;
+    }
+
+    const turnEl = turnElements()[currentTurn - 1];
+    if (!turnEl) return;
+    const hiddenBlocks = turnEl.querySelectorAll(".block-wrapper.block-hidden");
+
+    if (hiddenBlocks.length > 0) {
+      // Reveal next block within current turn
+      const w = hiddenBlocks[0];
+      const prev = turnEl.querySelector(".block-active");
+      if (prev) prev.classList.remove("block-active");
+      w.classList.remove("block-hidden");
+      w.classList.add("block-revealing", "block-active");
+      scrollIntoView(w);
+    } else if (currentTurn < TURNS.length) {
+      // All blocks revealed — advance to next turn with blocks hidden
+      const prev = turnEl.querySelector(".block-active");
+      if (prev) prev.classList.remove("block-active");
+      currentTurn++;
+      const turns = turnElements();
+      const nextEl = turns[currentTurn - 1];
+      if (nextEl) {
+        nextEl.classList.add("visible");
+        hideAllBlocks(nextEl);
+        scrollIntoView(nextEl);
+      }
+      updateBookmarkVisibility();
+      updateProgress();
+      setActiveTurn(currentTurn - 1);
+    }
   }
 
   function stepBack() {
-    navigate(currentTurn - 1, { anchorTop: true });
+    if (playing) stopPlay();
+    animatePausedState = null;
+    scrollProtectUntil = Date.now() + 2000;
+
+    const turnEl = currentTurn > 0 ? turnElements()[currentTurn - 1] : null;
+    if (turnEl) {
+      const revealedBlocks = turnEl.querySelectorAll(".block-wrapper:not(.block-hidden)");
+      if (revealedBlocks.length > 0) {
+        // Hide last revealed block within current turn
+        const last = revealedBlocks[revealedBlocks.length - 1];
+        last.classList.add("block-hidden");
+        last.classList.remove("block-revealing", "block-active");
+        // Scroll down to show what remains
+        const remaining = turnEl.querySelectorAll(".block-wrapper:not(.block-hidden)");
+        if (remaining.length > 0) {
+          remaining[remaining.length - 1].classList.add("block-active");
+          scrollToBottom(remaining[remaining.length - 1]);
+        } else {
+          scrollToBottom(turnEl);
+        }
+        return;
+      }
+    }
+
+    // No blocks to hide — go to previous turn (all blocks revealed) or splash
+    if (currentTurn <= 1) {
+      navigate(0);
+    } else {
+      currentTurn--;
+      const turns = turnElements();
+      // Hide the turn we just left
+      turns[currentTurn]?.classList.remove("visible");
+      // Previous turn should have all blocks revealed
+      const prevEl = turns[currentTurn - 1];
+      if (prevEl) {
+        revealAllBlocks(prevEl);
+        scrollToBottom(prevEl);
+      }
+      updateBookmarkVisibility();
+      updateProgress();
+      setActiveTurn(currentTurn - 1);
+    }
   }
 
   // ═══════════════════════════════════════════
@@ -1881,7 +2009,7 @@ body.scroll-bottom .transcript {
     if (target <= 1 && pct < 0.05) {
       navigate(0);
     } else {
-      navigate(Math.max(1, target), { anchorTop: true });
+      navigate(Math.max(1, target), { hideActiveBlocks: true });
     }
   }
 
@@ -2124,7 +2252,7 @@ body.scroll-bottom .transcript {
       item.className = "chapter-item";
       item.innerHTML = `<span class="chapter-item-turn">#${bm.turn}</span><span class="chapter-item-label">${escapeHtml(bm.label)}</span>`;
       item.addEventListener("click", () => {
-        navigate(bm.turn, { anchorTop: true });
+        navigate(bm.turn, { hideActiveBlocks: true });
         chapterWrap.classList.remove("open");
       });
       chapterMenu.appendChild(item);
@@ -2134,7 +2262,7 @@ body.scroll-bottom .transcript {
       item2.className = "chapter-item";
       item2.innerHTML = item.innerHTML;
       item2.addEventListener("click", () => {
-        navigate(bm.turn, { anchorTop: true });
+        navigate(bm.turn, { hideActiveBlocks: true });
         moreWrap.classList.remove("open");
       });
       moreChapterList.appendChild(item2);
