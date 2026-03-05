@@ -1428,7 +1428,7 @@ body.scroll-bottom .transcript {
     });
   }
 
-  function showUpTo(index, { anchorTop = false } = {}) {
+  function showUpTo(index, { anchorTop = false, skipScroll = false } = {}) {
     currentTurn = Math.min(index, TURNS.length);
     const turns = turnElements();
     // Mark turns up to currentTurn as visible
@@ -1453,7 +1453,7 @@ body.scroll-bottom .transcript {
     setActiveTurn(currentTurn - 1);
 
     // Pin active turn just below the controls bar, with a peek of previous turn
-    if (currentTurn > 0) {
+    if (!skipScroll && currentTurn > 0) {
       const el = turns[currentTurn - 1];
       if (el) scrollToTurn(el, { anchorTop });
     }
@@ -1545,8 +1545,10 @@ body.scroll-bottom .transcript {
         const viewBottom = window.innerHeight - barH;
         const wRect = w.getBoundingClientRect();
         if (wRect.bottom > viewBottom) {
+          cancelScrollAnim();
           const targetY = wRect.bottom + window.scrollY - viewBottom + 20;
-          window.scrollTo({ top: targetY, behavior: "smooth" });
+          // First block in a turn: smooth (big jump). Rest: instant (avoid fighting).
+          window.scrollTo({ top: targetY, behavior: idx === 0 ? "smooth" : "instant" });
         }
       });
     }
@@ -1597,7 +1599,8 @@ body.scroll-bottom .transcript {
 
     if (ANIMATE) {
       // Show the turn container (header + user text) immediately
-      showUpTo(currentTurn + 1);
+      // skipScroll: block reveals handle their own scrolling during playback
+      showUpTo(currentTurn + 1, { skipScroll: true });
 
       const el = turnElements()[currentTurn - 1];
       if (!el) { stopPlay(); return; }
