@@ -992,13 +992,7 @@ body.in-iframe .progress-text { display: none; }
   const ANIMATE_FALLBACK_DELAY = 800;  // ms between blocks when timestamps missing
   const ANIMATE_MAX_DELAY = 10000;     // max ms between blocks (before speed scaling)
   const PEEK_OFFSET = 20;              // px of next dimmed turn visible below
-  const PAUSE_TOP_MS = 2500;           // pause at top of tall turn (ms, at 1x)
-  const PAUSE_BOTTOM_MS = 2500;        // pause at bottom of tall turn before advancing
-  const SHORT_TURN_DELAY_MS = 5000;    // delay between short turns
-  const SCROLL_SPEED_FACTOR = 6;       // scroll px-to-ms multiplier
-  const SCROLL_MIN_MS = 3000;          // min scroll duration for tall turns
-  const SCROLL_MAX_MS = 16000;         // max scroll duration for tall turns
-  const TALL_THRESHOLD = 50;           // px overflow to trigger tall-turn mode
+  const SHORT_TURN_DELAY_MS = 5000;    // delay between turns during playback
   const TURN_SCROLL_MS = 600;          // duration of scroll between turns
 
   // Compute session start time from first turn
@@ -1650,38 +1644,12 @@ body.in-iframe .progress-text { display: none; }
     return cancel;
   }
 
-  // After all blocks in a turn are revealed, dwell (pause + scroll tall turns) then advance
-  function dwellThenAdvance(el) {
-    requestAnimationFrame(() => {
+  // After all blocks in a turn are revealed, pause then advance
+  function dwellThenAdvance() {
+    animateCancelFn = adaptiveWait(SHORT_TURN_DELAY_MS, () => {
       if (!playing) return;
-      const rect = el.getBoundingClientRect();
-      const viewH = window.innerHeight - getControlsHeight();
-      const overflow = rect.height - viewH;
-
-      if (overflow > TALL_THRESHOLD) {
-        // Tall turn: pause at bottom, scroll up to top, pause again, then advance
-        const targetY = el.offsetTop;
-        const scrollDist = Math.abs(targetY - window.scrollY);
-        const scrollDuration = Math.min(Math.max(scrollDist * SCROLL_SPEED_FACTOR / speed, SCROLL_MIN_MS / speed), SCROLL_MAX_MS / speed);
-
-        animateCancelFn = adaptiveWait(PAUSE_BOTTOM_MS, () => {
-          if (!playing) return;
-          smoothScrollTo(targetY, scrollDuration, () => {
-            if (!playing) return;
-            animateCancelFn = adaptiveWait(PAUSE_TOP_MS, () => {
-              if (!playing) return;
-              animateCancelFn = null;
-              playStep();
-            });
-          });
-        });
-      } else {
-        animateCancelFn = adaptiveWait(SHORT_TURN_DELAY_MS, () => {
-          if (!playing) return;
-          animateCancelFn = null;
-          playStep();
-        });
-      }
+      animateCancelFn = null;
+      playStep();
     });
   }
 
@@ -1711,7 +1679,7 @@ body.in-iframe .progress-text { display: none; }
     animateCancelFn = animateTurn(currentTurn - 1, () => {
       animateCancelFn = null;
       if (!playing) return;
-      dwellThenAdvance(el);
+      dwellThenAdvance();
     });
   }
 
@@ -1741,12 +1709,11 @@ body.in-iframe .progress-text { display: none; }
     // Resume mid-turn if we paused inside a block animation
     if (animatePausedState) {
       const ps = animatePausedState;
-      const el = turnElements()[ps.turnIndex];
       animatePausedState = null;
       animateCancelFn = animateTurn(ps.turnIndex, () => {
         animateCancelFn = null;
         if (!playing) return;
-        if (el) dwellThenAdvance(el); else playStep();
+        dwellThenAdvance();
       }, ps.blockIdx);
       return;
     }
@@ -1761,7 +1728,7 @@ body.in-iframe .progress-text { display: none; }
           animateCancelFn = animateTurn(currentTurn - 1, () => {
             animateCancelFn = null;
             if (!playing) return;
-            dwellThenAdvance(turnEl);
+            dwellThenAdvance();
           }, revealed);
           return;
         }
