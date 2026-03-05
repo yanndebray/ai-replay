@@ -986,7 +986,6 @@ body.in-iframe .progress-text { display: none; }
 
   const TURNS = await decodeData("/*TURNS_DATA*/");
   const BOOKMARKS = await decodeData("/*BOOKMARKS_DATA*/");
-  const ANIMATE = true;
 
   const SPEED_STEPS = [0.5, 1, 2, 3, 5];
   const ANIMATE_MIN_DELAY = 600;       // minimum ms between consecutive block reveals
@@ -1347,7 +1346,7 @@ body.in-iframe .progress-text { display: none; }
       if (toolRun.length > 0) { segments.push({ type: "tools", blocks: toolRun, blockIdx: blockIdx++ }); }
 
       for (const seg of segments) {
-        const hiddenCls = ANIMATE ? " block-hidden" : "";
+        const hiddenCls = " block-hidden";
         if (seg.type === "single") {
           const block = seg.block;
           if (block.kind === "text") {
@@ -1494,7 +1493,7 @@ body.in-iframe .progress-text { display: none; }
       const el = turns[i];
       if (i < currentTurn) {
         el.classList.add("visible");
-        if (ANIMATE && !playing) {
+        if (!playing) {
           // Active turn (last visible): optionally keep blocks hidden
           if (hideActiveBlocks && i === currentTurn - 1) {
             hideAllBlocks(el);
@@ -1504,10 +1503,7 @@ body.in-iframe .progress-text { display: none; }
         }
       } else {
         el.classList.remove("visible");
-        // Re-hide blocks in turns that are no longer visible (for seek-backward)
-        if (ANIMATE) {
-          hideAllBlocks(el);
-        }
+        hideAllBlocks(el);
       }
     }
     updateBookmarkVisibility();
@@ -1654,75 +1650,8 @@ body.in-iframe .progress-text { display: none; }
     return cancel;
   }
 
-  function playStep() {
-    if (!playing) return;
-    if (currentTurn >= TURNS.length) { stopPlay(); return; }
-
-    if (ANIMATE) {
-      // Show the turn container (header + user text) immediately
-      const fromSplash = currentTurn === 0;
-      showUpTo(currentTurn + 1, { skipScroll: true });
-
-      // From splash: instantly position at the first turn
-      if (fromSplash) {
-        const el = turnElements()[0];
-        if (el) {
-          const barH = getControlsHeight();
-          const viewH = window.innerHeight - barH;
-          const absBottom = el.getBoundingClientRect().bottom + window.scrollY;
-          window.scrollTo({ top: Math.max(0, absBottom - viewH + PEEK_OFFSET), behavior: "instant" });
-        }
-      }
-
-      const el = turnElements()[currentTurn - 1];
-      if (!el) { stopPlay(); return; }
-
-      // Animate blocks within the turn, then dwell before advancing
-      animateCancelFn = animateTurn(currentTurn - 1, () => {
-        animateCancelFn = null;
-        if (!playing) return;
-
-        requestAnimationFrame(() => {
-          if (!playing) return;
-          const rect = el.getBoundingClientRect();
-          const viewH = window.innerHeight - getControlsHeight();
-          const overflow = rect.height - viewH;
-
-          if (overflow > TALL_THRESHOLD) {
-            // Tall turn: pause at bottom, scroll up to top, pause again, then advance
-            const targetY = el.offsetTop;
-            const scrollDist = Math.abs(targetY - window.scrollY);
-            const scrollDuration = Math.min(Math.max(scrollDist * SCROLL_SPEED_FACTOR / speed, SCROLL_MIN_MS / speed), SCROLL_MAX_MS / speed);
-
-            animateCancelFn = adaptiveWait(PAUSE_BOTTOM_MS, () => {
-              if (!playing) return;
-              smoothScrollTo(targetY, scrollDuration, () => {
-                if (!playing) return;
-                animateCancelFn = adaptiveWait(PAUSE_TOP_MS, () => {
-                  if (!playing) return;
-                  animateCancelFn = null;
-                  playStep();
-                });
-              });
-            });
-          } else {
-            animateCancelFn = adaptiveWait(SHORT_TURN_DELAY_MS, () => {
-              if (!playing) return;
-              animateCancelFn = null;
-              playStep();
-            });
-          }
-        });
-      });
-      return;
-    }
-
-    // Non-animate mode: show turn instantly, then dwell
-    showUpTo(currentTurn + 1);
-
-    const el = turnElements()[currentTurn - 1];
-    if (!el) { stopPlay(); return; }
-
+  // After all blocks in a turn are revealed, dwell (pause + scroll tall turns) then advance
+  function dwellThenAdvance(el) {
     requestAnimationFrame(() => {
       if (!playing) return;
       const rect = el.getBoundingClientRect();
@@ -1730,26 +1659,59 @@ body.in-iframe .progress-text { display: none; }
       const overflow = rect.height - viewH;
 
       if (overflow > TALL_THRESHOLD) {
+        // Tall turn: pause at bottom, scroll up to top, pause again, then advance
         const targetY = el.offsetTop;
-        const scrollDuration = Math.min(Math.max(overflow / speed * SCROLL_SPEED_FACTOR, SCROLL_MIN_MS / speed), SCROLL_MAX_MS / speed);
+        const scrollDist = Math.abs(targetY - window.scrollY);
+        const scrollDuration = Math.min(Math.max(scrollDist * SCROLL_SPEED_FACTOR / speed, SCROLL_MIN_MS / speed), SCROLL_MAX_MS / speed);
 
-        playTimer = setTimeout(() => {
+        animateCancelFn = adaptiveWait(PAUSE_BOTTOM_MS, () => {
           if (!playing) return;
           smoothScrollTo(targetY, scrollDuration, () => {
             if (!playing) return;
-            playTimer = setTimeout(() => {
+            animateCancelFn = adaptiveWait(PAUSE_TOP_MS, () => {
               if (!playing) return;
+              animateCancelFn = null;
               playStep();
-            }, PAUSE_TOP_MS / speed);
+            });
           });
-        }, PAUSE_BOTTOM_MS / speed);
+        });
       } else {
-        const delay = SHORT_TURN_DELAY_MS / speed;
-        playTimer = setTimeout(() => {
+        animateCancelFn = adaptiveWait(SHORT_TURN_DELAY_MS, () => {
           if (!playing) return;
+          animateCancelFn = null;
           playStep();
-        }, delay);
+        });
       }
+    });
+  }
+
+  function playStep() {
+    if (!playing) return;
+    if (currentTurn >= TURNS.length) { stopPlay(); return; }
+
+    // Show the turn container (header + user text) immediately
+    const fromSplash = currentTurn === 0;
+    showUpTo(currentTurn + 1, { skipScroll: true });
+
+    // From splash: instantly position at the first turn
+    if (fromSplash) {
+      const el = turnElements()[0];
+      if (el) {
+        const barH = getControlsHeight();
+        const viewH = window.innerHeight - barH;
+        const absBottom = el.getBoundingClientRect().bottom + window.scrollY;
+        window.scrollTo({ top: Math.max(0, absBottom - viewH + PEEK_OFFSET), behavior: "instant" });
+      }
+    }
+
+    const el = turnElements()[currentTurn - 1];
+    if (!el) { stopPlay(); return; }
+
+    // Animate blocks within the turn, then dwell before advancing
+    animateCancelFn = animateTurn(currentTurn - 1, () => {
+      animateCancelFn = null;
+      if (!playing) return;
+      dwellThenAdvance(el);
     });
   }
 
@@ -1761,11 +1723,9 @@ body.in-iframe .progress-text { display: none; }
       currentTurn = 0;
       animatePausedState = null;
       for (const el of transcript.children) el.classList.remove("visible");
-      if (ANIMATE) {
-        for (const w of transcript.querySelectorAll(".block-wrapper")) {
-          w.classList.add("block-hidden");
-          w.classList.remove("block-revealing");
-        }
+      for (const w of transcript.querySelectorAll(".block-wrapper")) {
+        w.classList.add("block-hidden");
+        w.classList.remove("block-revealing");
       }
     }
     playing = true;
@@ -1779,19 +1739,20 @@ body.in-iframe .progress-text { display: none; }
     }
 
     // Resume mid-turn if we paused inside a block animation
-    if (animatePausedState && ANIMATE) {
+    if (animatePausedState) {
       const ps = animatePausedState;
+      const el = turnElements()[ps.turnIndex];
       animatePausedState = null;
       animateCancelFn = animateTurn(ps.turnIndex, () => {
         animateCancelFn = null;
         if (!playing) return;
-        playStep();
+        if (el) dwellThenAdvance(el); else playStep();
       }, ps.blockIdx);
       return;
     }
 
     // Resume if current turn has unrevealed blocks (from block-by-block stepping)
-    if (ANIMATE && currentTurn > 0) {
+    if (currentTurn > 0) {
       const turnEl = turnElements()[currentTurn - 1];
       if (turnEl) {
         const revealed = turnEl.querySelectorAll(".block-wrapper:not(.block-hidden)").length;
@@ -1800,7 +1761,7 @@ body.in-iframe .progress-text { display: none; }
           animateCancelFn = animateTurn(currentTurn - 1, () => {
             animateCancelFn = null;
             if (!playing) return;
-            playStep();
+            dwellThenAdvance(turnEl);
           }, revealed);
           return;
         }
@@ -2026,7 +1987,7 @@ body.in-iframe .progress-text { display: none; }
           currentTurn = idx;
           for (let i = 0; i < turns.length; i++) {
             turns[i].classList.toggle("visible", i < currentTurn);
-            if (ANIMATE && i < currentTurn) {
+            if (i < currentTurn) {
               revealAllBlocks(turns[i]);
             }
           }
