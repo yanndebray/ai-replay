@@ -1077,7 +1077,6 @@ body.in-iframe .bar-title:hover {
   let animatePausedState = null; // { turnIndex, blockIdx } when paused mid-turn
   let scrollProtectUntil = 0;    // timestamp — suppress scroll tracking after programmatic scrolls
   let scrollAnim = null;
-  let expandPaused = false;
   let scrollTick = false;
   let timerInterval = null;
   let displayedTimeMs = 0;  // session elapsed time shown in timer
@@ -2179,20 +2178,9 @@ body.in-iframe .bar-title:hover {
 
   // Expanding/collapsing sections pauses playback
   transcript.addEventListener("click", (e) => {
-    expandPaused = false;
     if (playing && (e.target.closest(".turn-header") || e.target.closest(".thinking-header") || e.target.closest(".tool-header") || e.target.closest(".tool-group-header") || e.target.closest(".collapsible-toggle"))) {
       stopPlay();
-      expandPaused = true;
     }
-  }, true); // capture phase so it fires before the inline onclick
-
-  // Click on a turn to make it active
-  transcript.addEventListener("click", (e) => {
-    if (expandPaused) return; // don't reset state when pausing from expand
-    const turn = e.target.closest(".turn");
-    if (!turn) return;
-    const idx = parseInt(turn.dataset.index, 10);
-    navigate(idx, { skipScroll: true });
   });
 
   // Keyboard shortcuts
