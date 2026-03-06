@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+- Fix README screenshot layout for npm
+
 ## 0.1.0 — Initial release
 
 ### Player
