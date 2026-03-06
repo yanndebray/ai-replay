@@ -1695,6 +1695,14 @@ body.in-iframe .bar-title:hover {
     const el = turnElements()[currentTurn - 1];
     if (!el) { stopPlay(); return; }
 
+    // For turns with no blocks (e.g. /exit), scroll to them directly
+    const wrappers = el.querySelectorAll(".block-wrapper");
+    if (wrappers.length === 0) {
+      scrollToBottom(el);
+      dwellThenAdvance();
+      return;
+    }
+
     // Animate blocks within the turn, then dwell before advancing
     animateCancelFn = animateTurn(currentTurn - 1, () => {
       animateCancelFn = null;
