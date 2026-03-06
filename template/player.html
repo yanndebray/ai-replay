@@ -2278,10 +2278,13 @@ body.in-iframe .bar-title:hover {
   applyVisibility();
   const hashMatch = location.hash.match(/turn=(\d+)/);
   if (hashMatch) {
-    // Deep link: skip splash, jump directly
-    hideSplash();
     const startTurn = Math.min(parseInt(hashMatch[1], 10), TURNS.length);
-    if (startTurn > 0) showUpTo(startTurn);
+    if (startTurn > 0) {
+      // Deep link: skip splash, jump directly
+      hideSplash();
+      showUpTo(startTurn);
+    }
+    // else: turn=0 means splash, which is already visible
   }
   // else: splash is visible, currentTurn = 0, progress at 0%
   updateProgress();
