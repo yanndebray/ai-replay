@@ -267,29 +267,29 @@ test("progress bar fill advances with turns", async ({ page }) => {
 
   // Each goto must be a full page load (not just hash change),
   // so navigate to about:blank between them.
-  // Turn 1: 0%, Turn 2: 50%, Turn 3: 100%
+  // Turn 1: 0%, Turn 2: 33.3%, Turn 4: 100%
   await goto(page, "turn=1");
   expect(await getFillWidth()).toBe(0);
 
   await page.goto("about:blank");
   await goto(page, "turn=2");
-  expect(await getFillWidth()).toBe(50);
+  expect(Math.round(await getFillWidth())).toBe(33);
 
   await page.goto("about:blank");
-  await goto(page, "turn=3");
+  await goto(page, "turn=4");
   expect(await getFillWidth()).toBe(100);
 });
 
 test("clicking progress bar seeks to position", async ({ page }) => {
   await goto(page, "turn=1");
 
-  // Click near the end of the progress bar (should seek to turn 3)
+  // Click near the end of the progress bar (should seek to last turn)
   const bar = page.locator("#progress-bar");
   const box = await bar.boundingBox();
   await bar.click({ position: { x: box.width - 5, y: box.height / 2 } });
 
   // Should be at or near the last turn
-  await expect(page.locator('.turn[data-index="3"]')).toBeVisible();
+  await expect(page.locator('.turn[data-index="4"]')).toBeVisible();
 });
 
 test("progress text shows timer", async ({ page }) => {
@@ -352,8 +352,69 @@ test("chapter click stops playback", async ({ page }) => {
   await page.locator("#chapter-btn").click();
   await page.locator("#chapter-menu .chapter-item", { hasText: "Wrap up" }).click();
 
-  // Should be at turn 3 and paused (play button shows ▶ not ❚❚)
-  await expect(page.locator('.turn[data-index="3"]')).toBeVisible();
+  // Should be at turn 4 and paused (play button shows ▶ not ❚❚)
+  await expect(page.locator('.turn[data-index="4"]')).toBeVisible();
   const btnText = await page.locator("#btn-play").textContent();
   expect(btnText).toBe("▶");
+});
+
+// ─── Diff view for Edit/Write ──────────────────────────────
+
+test("Edit tool renders diff view with red/green lines", async ({ page }) => {
+  await goto(page, "turn=3");
+  // Expand the Edit tool block
+  const editTool = page.locator('.turn[data-index="3"] .tool-block', { hasText: "Edit" }).first();
+  await editTool.locator(".tool-header").click();
+  await expect(editTool.locator(".tool-body")).toBeVisible();
+
+  // Should have diff-view with diff lines
+  await expect(editTool.locator(".diff-view")).toBeVisible();
+  await expect(editTool.locator(".diff-file")).toContainText("/src/app.ts");
+
+  // Should have red (deleted) and green (added) lines
+  const delLines = editTool.locator(".diff-line-del");
+  const addLines = editTool.locator(".diff-line-add");
+  expect(await delLines.count()).toBeGreaterThan(0);
+  expect(await addLines.count()).toBeGreaterThan(0);
+
+  // Should show result
+  await expect(editTool.locator(".diff-result")).toContainText("Updated /src/app.ts");
+});
+
+test("Write tool renders code block", async ({ page }) => {
+  await goto(page, "turn=3");
+  // Expand the Write tool block
+  const writeTool = page.locator('.turn[data-index="3"] .tool-block', { hasText: "Write" }).first();
+  await writeTool.locator(".tool-header").click();
+  await expect(writeTool.locator(".tool-body")).toBeVisible();
+
+  // Should have diff-view with file path and code content
+  await expect(writeTool.locator(".diff-view")).toBeVisible();
+  await expect(writeTool.locator(".diff-file")).toContainText("/src/config.json");
+  await expect(writeTool.locator("pre code")).toBeVisible();
+  await expect(writeTool.locator("pre code")).toContainText("version");
+
+  // Should show result
+  await expect(writeTool.locator(".diff-result")).toContainText("Created /src/config.json");
+});
+
+test("Edit/Write tool headers show file basename as preview", async ({ page }) => {
+  await goto(page, "turn=3");
+  const editPreview = page.locator('.turn[data-index="3"] .tool-block', { hasText: "Edit" }).first().locator(".tool-args-preview");
+  const writePreview = page.locator('.turn[data-index="3"] .tool-block', { hasText: "Write" }).first().locator(".tool-args-preview");
+
+  await expect(editPreview).toContainText("app.ts");
+  await expect(writePreview).toContainText("config.json");
+});
+
+test("other tools still render generic input/result", async ({ page }) => {
+  await goto(page, "turn=1");
+  // Expand the first tool block (ble_scan_start)
+  const tool = page.locator('.turn[data-index="1"] .tool-block').first();
+  await tool.locator(".tool-header").click();
+  await expect(tool.locator(".tool-body")).toBeVisible();
+
+  // Should have generic input/result, NOT diff-view
+  await expect(tool.locator(".tool-input")).toBeVisible();
+  await expect(tool.locator(".diff-view")).toHaveCount(0);
 });

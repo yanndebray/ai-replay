@@ -534,6 +534,13 @@ body.in-iframe .bar-title:hover {
   font-weight: 600;
 }
 
+/* Diff view for Edit/Write tools */
+.diff-view { font-family: inherit; font-size: 12px; padding: 8px 10px; white-space: pre-wrap; word-break: break-word; max-height: 300px; overflow-y: auto; }
+.diff-file { color: var(--text-dim); font-size: 11px; margin-bottom: 6px; }
+.diff-line-del { color: var(--red); background: rgba(248,81,73,0.1); }
+.diff-line-add { color: var(--green); background: rgba(63,185,80,0.1); }
+.diff-result { color: var(--text-dim); font-size: 11px; padding: 6px 10px; border-top: 1px solid var(--border); }
+
 /* Tool group (consecutive tool calls) */
 .tool-group {
   margin: 6px 0;
@@ -1200,6 +1207,55 @@ body.in-iframe .bar-title:hover {
     }
   }
 
+  function toolPreview(tc) {
+    const name = tc.name || "";
+    const input = tc.input || {};
+    if (name === "Edit" || name === "Write") {
+      const fp = input.file_path || "";
+      return fp.split("/").pop() || fp;
+    }
+    return truncate(input, 60);
+  }
+
+  function formatToolBody(tc) {
+    const name = tc.name || "";
+    const input = tc.input || {};
+
+    if (name === "Edit" && input.old_string != null && input.new_string != null) {
+      const fp = input.file_path || "";
+      const oldLines = String(input.old_string).split("\n");
+      const newLines = String(input.new_string).split("\n");
+      let diffHtml = `<div class="diff-view"><div class="diff-file">${escapeHtml(fp)}${input.replace_all ? " (replace all)" : ""}</div>`;
+      for (const l of oldLines) {
+        diffHtml += `<div class="diff-line-del">${escapeHtml("\u2212 " + l)}</div>`;
+      }
+      for (const l of newLines) {
+        diffHtml += `<div class="diff-line-add">${escapeHtml("+ " + l)}</div>`;
+      }
+      diffHtml += "</div>";
+      if (tc.result != null) {
+        diffHtml += `<div class="diff-result">${escapeHtml(tc.result)}</div>`;
+      }
+      return diffHtml;
+    }
+
+    if (name === "Write" && input.content != null) {
+      const fp = input.file_path || "";
+      let html = `<div class="diff-view"><div class="diff-file">${escapeHtml(fp)}</div><pre style="margin:0;background:none;border:none;padding:0;overflow:visible;"><code>${escapeHtml(input.content)}</code></pre></div>`;
+      if (tc.result != null) {
+        html += `<div class="diff-result">${escapeHtml(tc.result)}</div>`;
+      }
+      return html;
+    }
+
+    // Default: generic input + result
+    let bodyHtml = `<div class="tool-input"><div class="tool-input-label">Input</div>${formatInput(input)}</div>`;
+    if (tc.result != null) {
+      bodyHtml += `<div class="tool-result" data-type="result"><div class="tool-result-label">Result</div>${escapeHtml(tc.result)}</div>`;
+    }
+    return bodyHtml;
+  }
+
   function countLines(text) {
     if (!text) return 0;
     return text.split("\n").length;
@@ -1382,11 +1438,8 @@ body.in-iframe .bar-title:hover {
           // Consecutive tool calls
           const toolHtml = seg.blocks.map(block => {
             const tc = block.tool_call;
-            const preview = truncate(tc.input, 60);
-            let bodyHtml = `<div class="tool-input"><div class="tool-input-label">Input</div>${formatInput(tc.input)}</div>`;
-            if (tc.result != null) {
-              bodyHtml += `<div class="tool-result" data-type="result"><div class="tool-result-label">Result</div>${escapeHtml(tc.result)}</div>`;
-            }
+            const preview = toolPreview(tc);
+            const bodyHtml = formatToolBody(tc);
             return `<div class="tool-block" data-type="tool">
               <div class="tool-header" onclick="this.parentElement.classList.toggle('open')">
                 <span class="tool-indicator"></span>

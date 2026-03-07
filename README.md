@@ -314,6 +314,10 @@ One JSON object per line with a top-level `role` field. No timestamps. Thinking 
 - Node.js 18+
 - Zero runtime dependencies (esbuild is a dev-only dependency for building the minified template)
 
+## Privacy
+
+Replay files embed the **full session transcript**, including source code, file paths, tool inputs/outputs, and thinking traces. Review the generated HTML before sharing publicly — it may contain proprietary code, internal paths, or other sensitive information. Secret redaction (enabled by default) catches common credential patterns but does not filter code or file contents.
+
 ## License
 
 [MIT](https://github.com/es617/claude-replay/blob/main/LICENSE)

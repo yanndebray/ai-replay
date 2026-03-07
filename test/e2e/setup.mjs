@@ -37,7 +37,7 @@ export function getChapterFileUrl(hash = "") {
     bookmarks: [
       { turn: 1, label: "Scan devices" },
       { turn: 2, label: "Connect" },
-      { turn: 3, label: "Wrap up" },
+      { turn: 4, label: "Wrap up" },
     ],
   }) + (hash ? "#" + hash : "");
 }
