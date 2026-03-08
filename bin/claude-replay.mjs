@@ -25,7 +25,8 @@ const options = {
   theme: { type: "string", default: "tokyo-night" },
   "theme-file": { type: "string" },
   "list-themes": { type: "boolean", default: false },
-  "no-redact": { type: "boolean", default: false },
+  "no-auto-redact": { type: "boolean", default: false },
+  redact: { type: "string", multiple: true },
   title: { type: "string" },
   "user-label": { type: "string", default: "User" },
   "assistant-label": { type: "string" },
@@ -67,7 +68,9 @@ Options:
   --no-thinking           Hide thinking blocks by default
   --no-tool-calls         Hide tool call blocks by default
   --title TEXT             Page title (default: derived from input path)
-  --no-redact             Disable secret redaction in output
+  --no-auto-redact        Disable automatic secret redaction
+  --redact "text"         Replace text with [REDACTED] (repeatable)
+  --redact "text=repl"    Replace text with custom replacement (repeatable)
   --theme NAME            Built-in theme (default: tokyo-night)
   --theme-file FILE       Custom theme JSON file (overrides --theme)
   --user-label NAME       Label for user messages (default: User)
@@ -271,12 +274,23 @@ if (values.bookmarks) {
 
 bookmarks.sort((a, b) => a.turn - b.turn);
 
+// Parse --redact rules
+let redactRules;
+if (values.redact) {
+  redactRules = values.redact.map((r) => {
+    const eqIdx = r.indexOf("=");
+    if (eqIdx === -1) return { search: r, replacement: "[REDACTED]" };
+    return { search: r.slice(0, eqIdx), replacement: r.slice(eqIdx + 1) };
+  });
+}
+
 const html = render(turns, {
   speed,
   showThinking: !values["no-thinking"],
   showToolCalls: !values["no-tool-calls"],
   theme,
-  redactSecrets: !values["no-redact"],
+  redactSecrets: !values["no-auto-redact"],
+  redactRules,
   userLabel: values["user-label"],
   assistantLabel: values["assistant-label"] || (format === "cursor" ? "Assistant" : "Claude"),
   title,

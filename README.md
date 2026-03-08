@@ -116,7 +116,9 @@ Note: the extracted data is the *parsed* representation (system tags stripped, s
 | `--no-tool-calls` | Hide tool call blocks by default |
 | `--mark "N:Label"` | Add a bookmark/chapter at turn N (repeatable) |
 | `--bookmarks FILE` | JSON file with bookmarks `[{turn, label}]` |
-| `--no-redact` | Disable automatic secret redaction |
+| `--no-auto-redact` | Disable automatic secret redaction |
+| `--redact "text"` | Replace all occurrences of text with `[REDACTED]` (repeatable) |
+| `--redact "text=repl"` | Replace all occurrences of text with custom replacement (repeatable) |
 | `--title TEXT` | Page title (default: derived from input path) |
 | `--user-label NAME` | Label for user messages (default: `User`) |
 | `--assistant-label NAME` | Label for assistant messages (default: auto-detected) |
@@ -311,7 +313,7 @@ Detected patterns include:
 To disable redaction (e.g. for internal/private replays):
 
 ```bash
-claude-replay session.jsonl --no-redact -o replay.html
+claude-replay session.jsonl --no-auto-redact -o replay.html
 ```
 
 ## Supported transcript formats
@@ -333,7 +335,7 @@ One JSON object per line with a top-level `role` field. No timestamps. Thinking 
 
 Replay files embed the **full session transcript**, including source code, file paths, tool inputs/outputs, and thinking traces. Review the generated HTML before sharing publicly — it may contain proprietary code, internal paths, or other sensitive information. Secret redaction (enabled by default) catches common credential patterns but does not filter code or file contents.
 
-The transcript data is stored as a compressed blob inside the HTML file. Editing the player JavaScript to hide or filter turns only affects rendering — the original data remains in the blob and can be recovered. To exclude sensitive content, use the CLI flags at generation time (e.g. `--turns` to select specific turns). All filtering and redaction is applied before the data is compressed into the output file.
+The transcript data is stored as a compressed blob inside the HTML file. Editing the player JavaScript to hide or filter turns only affects rendering — the original data remains in the blob and can be recovered. To exclude sensitive content, use the CLI flags at generation time (e.g. `--turns`, `--exclude-turns`). Use `--redact` to strip specific strings (usernames, paths, project names) at generation time. Always review the generated replay before sharing publicly.
 
 ## License
 

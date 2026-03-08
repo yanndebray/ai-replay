@@ -31,29 +31,65 @@ function compressForEmbed(json) {
 }
 
 /**
+ * Build a text-replacement function from user-supplied --redact rules.
+ * @param {Array<{search: string, replacement: string}>} rules
+ * @returns {(text: string) => string}
+ */
+function buildRedactor(rules) {
+  if (!rules || rules.length === 0) return (t) => t;
+  return (text) => {
+    if (typeof text !== "string") return text;
+    let result = text;
+    for (const { search, replacement } of rules) {
+      result = result.replaceAll(search, replacement);
+    }
+    return result;
+  };
+}
+
+/**
+ * Recursively apply a text transform to all string values in an object/array.
+ * @param {unknown} obj
+ * @param {(s: string) => string} fn
+ * @returns {unknown}
+ */
+function transformStrings(obj, fn) {
+  if (typeof obj === "string") return fn(obj);
+  if (Array.isArray(obj)) return obj.map((v) => transformStrings(v, fn));
+  if (obj !== null && typeof obj === "object") {
+    const out = {};
+    for (const [key, value] of Object.entries(obj)) {
+      out[key] = transformStrings(value, fn);
+    }
+    return out;
+  }
+  return obj;
+}
+
+/**
  * Prepare turns data for serialization.
  * @param {import('./parser.mjs').Turn[]} turns
- * @param {{ redact?: boolean }} options
+ * @param {{ redact?: boolean, redactRules?: Array<{search: string, replacement: string}> }} options
  */
-function turnsToJsonData(turns, { redact = true } = {}) {
+function turnsToJsonData(turns, { redact = true, redactRules } = {}) {
+  const customRedact = buildRedactor(redactRules);
+  const scrubText = (text) => customRedact(redact ? redactSecrets(text) : text);
+  const scrubObj = (obj) => transformStrings(redact ? redactObject(obj) : obj, customRedact);
+
   return turns.map((turn) => ({
     index: turn.index,
-    user_text: redact ? redactSecrets(turn.user_text) : turn.user_text,
+    user_text: scrubText(turn.user_text),
     blocks: turn.blocks.map((b) => {
       const block = {
         kind: b.kind,
-        text: redact ? redactSecrets(b.text) : b.text,
+        text: scrubText(b.text),
       };
       if (b.timestamp) block.timestamp = b.timestamp;
       if (b.tool_call) {
         block.tool_call = {
           name: b.tool_call.name,
-          input: redact
-            ? redactObject(b.tool_call.input)
-            : b.tool_call.input,
-          result: redact
-            ? redactSecrets(b.tool_call.result)
-            : b.tool_call.result,
+          input: scrubObj(b.tool_call.input),
+          result: scrubText(b.tool_call.result),
         };
         if (b.tool_call.is_error) {
           block.tool_call.is_error = true;
@@ -122,7 +158,7 @@ export function render(turns, opts = {}) {
     ? compressForEmbed(json)
     : escapeJsonForScript(json);
   html = html.replace("/*BOOKMARKS_DATA*/", embedData(JSON.stringify(bookmarks)));
-  html = html.replace("/*TURNS_DATA*/", embedData(JSON.stringify(turnsToJsonData(turns, { redact }))));
+  html = html.replace("/*TURNS_DATA*/", embedData(JSON.stringify(turnsToJsonData(turns, { redact, redactRules: opts.redactRules }))));
 
   return html;
 }

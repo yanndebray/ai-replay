@@ -65,6 +65,45 @@ describe("render", () => {
     assert.match(html, /id="toggle-thinking" checked>/);
   });
 
+  it("applies custom redact rules", () => {
+    const html = render(SAMPLE_TURNS, {
+      minified: false, compress: false, redactSecrets: false,
+      redactRules: [{ search: "/tmp/x", replacement: "/safe/path" }],
+    });
+    assert.match(html, /\/safe\/path/);
+    assert.doesNotMatch(html, /\/tmp\/x/);
+  });
+
+  it("redacts with default [REDACTED] replacement", () => {
+    const html = render(SAMPLE_TURNS, {
+      minified: false, compress: false, redactSecrets: false,
+      redactRules: [{ search: "Hello", replacement: "[REDACTED]" }],
+    });
+    assert.doesNotMatch(html, /"user_text":"Hello"/);
+    assert.match(html, /\[REDACTED\]/);
+  });
+
+  it("custom redact works with auto-redact disabled", () => {
+    const turns = [
+      {
+        index: 1,
+        user_text: "my key is sk-abc12345678901234567890",
+        blocks: [{ kind: "text", text: "Hello from /Users/jdoe/project", tool_call: null }],
+        timestamp: "2025-06-01T10:00:00Z",
+      },
+    ];
+    const html = render(turns, {
+      minified: false, compress: false,
+      redactSecrets: false,
+      redactRules: [{ search: "jdoe", replacement: "anonymous" }],
+    });
+    // Auto-redact disabled: secret key should survive
+    assert.match(html, /sk-abc12345678901234567890/);
+    // Custom redact still applied
+    assert.match(html, /anonymous/);
+    assert.doesNotMatch(html, /jdoe/);
+  });
+
   it("has no leftover placeholders", () => {
     const html = render(SAMPLE_TURNS, { minified: false });
     assert.doesNotMatch(html, /\/\*THEME_CSS\*\//);
