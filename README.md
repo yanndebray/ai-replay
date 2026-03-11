@@ -12,9 +12,9 @@ AI coding sessions are great for development, but hard to share. Screen recordin
 
 **claude-replay** turns Claude Code session logs into interactive, shareable HTML replays. The generated replay is a single self-contained HTML file with no external dependencies — you can email it, host it anywhere, or embed it in documentation. Also supports Cursor agent transcripts.
 
-[![Demo screenshot](https://raw.githubusercontent.com/es617/claude-replay/main/docs/screenshot-dracula.png)](https://es617.github.io/claude-replay/demo.html)
+![Demo](https://raw.githubusercontent.com/es617/claude-replay/main/docs/demo.gif)
 
-**[Try the live demo](https://es617.github.io/claude-replay/demo.html)**
+**[Try the live demo](https://es617.github.io/claude-replay/demo-redaction.html)**
 
 Claude Code and Cursor store conversation transcripts as JSONL files on disk. **claude-replay** auto-detects the format and converts them into visual replays suitable for blog posts, demos, and documentation.
 
