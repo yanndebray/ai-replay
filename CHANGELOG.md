@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.3.0
+
+### New commands
+- `extract` subcommand: recover embedded turn/bookmark data from a generated replay HTML
+
+### New flags
+- `--exclude-turns N,N,...`: exclude specific turns by index (combines with `--turns`)
+- `--redact "text"` / `--redact "text=repl"`: custom string replacement at generation time
+- `--no-auto-redact`: disable built-in secret pattern redaction (renamed from `--no-redact`)
+- `--description TEXT`: customize meta description for link previews
+- `--og-image URL`: customize OG image for link previews
+- `--open`: launch replay in default browser after generation
+
+### Player
+- Keyboard shortcuts: `Shift+→/L` and `Shift+←/H` to jump between turns
+- Keyboard shortcuts: `T` / `Shift+T` to jump between thinking/tool blocks
+- Active block indicator (left border highlight)
+- OG/Twitter meta tags with default image for link previews
+
+### Other
+- Default OG image hosted on GitHub Pages
+- Fix `npm test` to avoid Playwright/Node test runner conflict
+
 ## 0.2.0
 
 ### Player
