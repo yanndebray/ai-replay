@@ -2365,8 +2365,8 @@ body.in-iframe .bar-title:hover {
     if (e.shiftKey && (e.key === "ArrowLeft" || e.key === "H")) { e.preventDefault(); jumpTurn(-1); return; }
     if (e.key === "ArrowRight" || e.key === "l") { e.preventDefault(); stepForward(); }
     if (e.key === "ArrowLeft" || e.key === "h") { e.preventDefault(); stepBack(); }
-    if (e.key === "n") { e.preventDefault(); jumpBlock(1); }
-    if (e.key === "N") { e.preventDefault(); jumpBlock(-1); }
+    if (e.key === "t") { e.preventDefault(); jumpBlock(1); }
+    if (e.key === "T") { e.preventDefault(); jumpBlock(-1); }
   });
 
   // Iframe detection — compact mode + title as pop-out link
