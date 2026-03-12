@@ -32,6 +32,10 @@ export function getFileUrl(hash = "") {
   return "file://" + buildHtml("default", {}) + (hash ? "#" + hash : "");
 }
 
+export function getUncompressedFileUrl(hash = "") {
+  return "file://" + buildHtml("uncompressed", { compress: false }) + (hash ? "#" + hash : "");
+}
+
 export function getChapterFileUrl(hash = "") {
   return "file://" + buildHtml("chapters", {
     bookmarks: [
