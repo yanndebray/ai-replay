@@ -39,6 +39,7 @@ const options = {
   "no-minify": { type: "boolean", default: false },
   "no-compress": { type: "boolean", default: false },
   open: { type: "boolean", default: false },
+  version: { type: "boolean", short: "v", default: false },
   help: { type: "boolean", short: "h", default: false },
 };
 
@@ -51,6 +52,12 @@ try {
 }
 
 const { values, positionals } = parsed;
+
+if (values.version) {
+  const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8"));
+  console.log(pkg.version);
+  process.exit(0);
+}
 
 // --- Editor (default when no args, or explicit "editor" subcommand) ---
 if (positionals.length === 0 || positionals[0] === "editor") {
