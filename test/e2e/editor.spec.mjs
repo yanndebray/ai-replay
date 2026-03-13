@@ -281,6 +281,31 @@ test("sidebar toggle collapses and expands sidebar", async ({ page }) => {
   await expect(page.locator("body")).not.toHaveClass(/sidebar-collapsed/);
 });
 
+test("sidebar is visible after reopen when resize handle was dragged", async ({ page }) => {
+  await gotoEditor(page);
+  const sidebar = page.locator(".sidebar");
+
+  // Collapse sidebar
+  await page.locator("#sidebarToggleBtn").click();
+  await expect(page.locator("body")).toHaveClass(/sidebar-collapsed/);
+
+  // Drag resize handle to simulate column resize while collapsed
+  const handle = page.locator("#resizeHandle");
+  const box = await handle.boundingBox();
+  await page.mouse.move(box.x + 2, box.y + 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 50, box.y + 2);
+  await page.mouse.up();
+
+  // Re-open sidebar
+  await page.locator("#sidebarToggleBtn").click();
+  await expect(page.locator("body")).not.toHaveClass(/sidebar-collapsed/);
+
+  // Sidebar should be visible (width > 100px)
+  const width = await sidebar.evaluate((el) => el.getBoundingClientRect().width);
+  expect(width).toBeGreaterThan(100);
+});
+
 // ─── Export ────────────────────────────────────────────────
 
 test("export button triggers download", async ({ page }) => {

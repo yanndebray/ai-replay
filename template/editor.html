@@ -1437,6 +1437,8 @@ body.sidebar-collapsed .sidebar-edge-toggle { left: 16px; }
   sidebarToggleBtn.addEventListener("click", () => {
     const collapsed = document.body.classList.toggle("sidebar-collapsed");
     sidebarToggleBtn.innerHTML = collapsed ? "&#8250;" : "&#8249;";
+    // Clear inline grid style so CSS classes take effect
+    appEl.style.gridTemplateColumns = "";
   });
   sessionsToggle.addEventListener("click", () => toggleSidebarSection(sessionsToggle, sessionsSection));
   optionsToggle.addEventListener("click", () => toggleSidebarSection(optionsToggle, optionsSection));
