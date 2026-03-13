@@ -70,4 +70,15 @@ describe("CLI flags", () => {
     assert.equal(code, 0);
     assert.match(stdout, /<!DOCTYPE html>/);
   });
+
+  it("remaps bookmark indices when excluding turns", async () => {
+    // Exclude turn 2, bookmark on original turn 3 → should become turn 2
+    const { code, stdout } = await run([
+      FIXTURE, "--exclude-turns", "2", "--mark", "3:TestBookmark", "--no-compress",
+    ]);
+    assert.equal(code, 0);
+    assert.ok(stdout.includes("TestBookmark"), "bookmark label in output");
+    assert.ok(stdout.includes('\\"turn\\":2'), "bookmark should reference remapped turn 2");
+    assert.ok(!stdout.includes('\\"turn\\":3'), "bookmark should not reference original turn 3");
+  });
 });

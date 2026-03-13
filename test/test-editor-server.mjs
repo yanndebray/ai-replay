@@ -229,6 +229,44 @@ describe("editor-server API", () => {
     assert.match(data.error, /home directory/);
   });
 
+  it("POST /api/preview remaps bookmark indices after excluding turns", async () => {
+    const loadRes = await fetch(`${baseUrl}/api/load`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: FIXTURE_PATH }),
+    });
+    const loadData = await loadRes.json();
+    const sid = loadData.sessionId;
+    assert.ok(loadData.turns.length >= 4, "fixture needs at least 4 turns");
+
+    // Exclude turn 2, bookmark turn 4 (original index)
+    const originalTurn4 = loadData.turns[3];
+    const res = await fetch(`${baseUrl}/api/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: sid,
+        options: {
+          excludeTurns: [loadData.turns[1].index],
+          bookmarks: [{ turn: originalTurn4.index, label: "Important turn" }],
+          compress: false,
+        },
+      }),
+    });
+    assert.equal(res.status, 200);
+    const data = await res.json();
+
+    // After excluding turn 2, original turn 4 should be remapped to index 3.
+    // The bookmark should reference the new sequential index, not the original.
+    // In the embedded JS data, quotes are escaped as \"
+    assert.ok(data.html.includes("Important turn"), "bookmark label should be in HTML");
+    // The bookmark should point to turn 3 (remapped), not turn 4 (original)
+    const bmMatch = data.html.match(/\\"turn\\":\d+/g) || data.html.match(/"turn":\d+/g);
+    assert.ok(bmMatch, "should have bookmark turn reference in HTML");
+    assert.ok(bmMatch.some((m) => m.includes("3")), `bookmark should reference turn 3, got: ${bmMatch}`);
+    assert.ok(!bmMatch.some((m) => m.includes("4")), `bookmark should not reference turn 4, got: ${bmMatch}`);
+  });
+
   it("rejects cross-origin API requests", async () => {
     const res = await fetch(`${baseUrl}/api/sessions`, {
       headers: { "Origin": "https://evil.example.com" },

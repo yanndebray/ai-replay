@@ -274,6 +274,13 @@ let turns = filterTurns(allTurns, {
   timeTo: values.to,
 });
 
+// Re-index sequentially after filtering so player position matches turn.index
+const indexMap = new Map(); // original index → new index
+for (let i = 0; i < turns.length; i++) {
+  indexMap.set(turns[i].index, i + 1);
+  turns[i].index = i + 1;
+}
+
 if (turns.length === 0) {
   console.error("Warning: no turns found after filtering.");
 }
@@ -351,7 +358,11 @@ if (values.bookmarks) {
   }
 }
 
-bookmarks.sort((a, b) => a.turn - b.turn);
+// Remap bookmark turn indices to match re-indexed turns
+bookmarks = bookmarks
+  .map((bm) => ({ turn: indexMap.get(bm.turn), label: bm.label }))
+  .filter((bm) => bm.turn != null)
+  .sort((a, b) => a.turn - b.turn);
 
 // Parse --redact rules
 let redactRules;

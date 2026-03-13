@@ -130,7 +130,7 @@ function getThemeSafe(name) {
 }
 
 /**
- * Prepare turns for rendering: clone, filter, apply timing.
+ * Prepare turns for rendering: clone, filter, re-index, apply timing.
  * Returns ready-to-render turns array.
  */
 function prepareTurns(session, options) {
@@ -139,6 +139,10 @@ function prepareTurns(session, options) {
     turns = filterTurns(turns, { excludeTurns: options.excludeTurns });
   }
   const cloned = JSON.parse(JSON.stringify(turns));
+  // Re-index sequentially so the player's position-based logic matches turn.index
+  for (let i = 0; i < cloned.length; i++) {
+    cloned[i].index = i + 1;
+  }
   const timing = options.timing || "auto";
   const hasTimestamps = cloned.some((t) => t.timestamp);
   if (timing === "paced" || (timing === "auto" && !hasTimestamps)) {
@@ -147,8 +151,29 @@ function prepareTurns(session, options) {
   return cloned;
 }
 
+/**
+ * Remap bookmark turn indices from original to new sequential indices.
+ * Bookmarks pointing to excluded turns are dropped.
+ */
+function remapBookmarks(bookmarks, originalTurns, excludedSet) {
+  if (!bookmarks || bookmarks.length === 0) return [];
+  // Build mapping: original index → new sequential index
+  const indexMap = new Map();
+  let seq = 1;
+  for (const t of originalTurns) {
+    if (!excludedSet.has(t.index)) {
+      indexMap.set(t.index, seq++);
+    }
+  }
+  return bookmarks
+    .map((bm) => ({ turn: indexMap.get(bm.turn), label: bm.label }))
+    .filter((bm) => bm.turn != null)
+    .sort((a, b) => a.turn - b.turn);
+}
+
 /** Build render options from client options + session metadata. */
 function buildRenderOpts(options, session, overrides = {}) {
+  const excludedSet = new Set(options.excludeTurns || []);
   return {
     speed: parseFloat(options.speed) || 1.0,
     showThinking: options.showThinking !== false,
@@ -161,8 +186,9 @@ function buildRenderOpts(options, session, overrides = {}) {
     title: options.title || "Replay",
     description: options.description || "",
     ogImage: options.ogImage || "",
-    bookmarks: (options.bookmarks || []).sort((a, b) => a.turn - b.turn),
+    bookmarks: remapBookmarks(options.bookmarks || [], session.workingTurns, excludedSet),
     minified: false,
+    compress: options.compress !== false,
     ...overrides,
   };
 }
