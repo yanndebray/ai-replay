@@ -401,7 +401,7 @@ function discoverSessions() {
   // Codex CLI: ~/.codex/sessions/<YYYY>/<MM>/<DD>/rollout-*.jsonl
   const codexBase = join(home, ".codex", "sessions");
   try {
-    const codexGroup = { name: "Codex CLI", projects: [] };
+    const codexGroup = { name: "Codex", projects: [] };
     // Walk year/month/day directories
     for (const year of readdirSync(codexBase).sort().reverse()) {
       const yearPath = join(codexBase, year);
