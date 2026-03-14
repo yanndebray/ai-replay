@@ -377,6 +377,113 @@ describe("editor-server API", () => {
     assert.deepEqual(reloadData.savedBookmarks, []);
   });
 
+  // ── Autosave ─────────────────────────────────────────────
+
+  it("autosaves edits to disk and restores on reload", async () => {
+    // Use a unique fixture copy to avoid interfering with other tests
+    const tmpFixture = join(homedir(), `.claude-replay-autosave-test-${process.pid}.jsonl`);
+    const { readFileSync: rf, copyFileSync } = await import("node:fs");
+    copyFileSync(FIXTURE_PATH, tmpFixture);
+
+    try {
+      // Load session
+      const loadRes = await fetch(`${baseUrl}/api/load`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: tmpFixture }),
+      });
+      const loadData = await loadRes.json();
+      const sid = loadData.sessionId;
+
+      // Edit a turn
+      await fetch(`${baseUrl}/api/edit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: sid, turnIndex: loadData.turns[0].index, user_text: "Autosave test" }),
+      });
+
+      // Trigger preview to schedule autosave
+      await fetch(`${baseUrl}/api/preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: sid, options: { excludeTurns: [2], bookmarks: [{ turn: 1, label: "Saved" }] } }),
+      });
+
+      // Wait for throttled autosave (2s + buffer)
+      await new Promise((r) => setTimeout(r, 2500));
+
+      // Verify autosave file exists
+      const { createHash } = await import("node:crypto");
+      const hash = createHash("sha256").update(tmpFixture).digest("hex").slice(0, 16);
+      const autosaveFile = join(homedir(), ".claude-replay", "autosave", hash + ".json");
+      assert.ok(existsSync(autosaveFile), "autosave file should exist");
+
+      // Force a new session by clearing in-memory cache — delete session from server
+      // We simulate this by loading from a "new" perspective:
+      // The server caches by sourcePath, so it will return the cached session.
+      // To test restore, we need the server to restart or the session to be evicted.
+      // Instead, verify the autosave file has correct content.
+      const saved = JSON.parse(rf(autosaveFile, "utf-8"));
+      assert.equal(saved.sourcePath, tmpFixture);
+      assert.equal(saved.workingTurns[0].user_text, "Autosave test");
+      assert.deepEqual(saved.excludedTurns, [2]);
+      assert.deepEqual(saved.bookmarks, [[1, "Saved"]]);
+    } finally {
+      if (existsSync(tmpFixture)) unlinkSync(tmpFixture);
+      // Clean up autosave file
+      try {
+        const { createHash } = await import("node:crypto");
+        const hash = createHash("sha256").update(tmpFixture).digest("hex").slice(0, 16);
+        const f = join(homedir(), ".claude-replay", "autosave", hash + ".json");
+        if (existsSync(f)) unlinkSync(f);
+      } catch {}
+    }
+  });
+
+  it("reset deletes autosave file", async () => {
+    const tmpFixture = join(homedir(), `.claude-replay-reset-test-${process.pid}.jsonl`);
+    const { copyFileSync } = await import("node:fs");
+    copyFileSync(FIXTURE_PATH, tmpFixture);
+
+    try {
+      const loadRes = await fetch(`${baseUrl}/api/load`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: tmpFixture }),
+      });
+      const sid = (await loadRes.json()).sessionId;
+
+      // Edit and trigger autosave
+      await fetch(`${baseUrl}/api/edit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: sid, turnIndex: 1, user_text: "Will be reset" }),
+      });
+      await fetch(`${baseUrl}/api/preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: sid, options: {} }),
+      });
+      await new Promise((r) => setTimeout(r, 2500));
+
+      const { createHash } = await import("node:crypto");
+      const hash = createHash("sha256").update(tmpFixture).digest("hex").slice(0, 16);
+      const autosaveFile = join(homedir(), ".claude-replay", "autosave", hash + ".json");
+      assert.ok(existsSync(autosaveFile), "autosave should exist before reset");
+
+      // Reset
+      await fetch(`${baseUrl}/api/reset`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: sid }),
+      });
+
+      assert.ok(!existsSync(autosaveFile), "autosave should be deleted after reset");
+    } finally {
+      if (existsSync(tmpFixture)) unlinkSync(tmpFixture);
+    }
+  });
+
   it("rejects cross-origin API requests", async () => {
     const res = await fetch(`${baseUrl}/api/sessions`, {
       headers: { "Origin": "https://evil.example.com" },

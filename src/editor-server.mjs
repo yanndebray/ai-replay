@@ -3,7 +3,8 @@
  */
 
 import { createServer } from "node:http";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, writeFileSync, mkdirSync, unlinkSync, existsSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { resolve, join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { execFile } from "node:child_process";
@@ -22,6 +23,59 @@ const PKG = JSON.parse(readFileSync(new URL("../package.json", import.meta.url),
 
 const sessions = new Map();
 let sessionCounter = 0;
+
+// ---------------------------------------------------------------------------
+// Autosave
+// ---------------------------------------------------------------------------
+
+const AUTOSAVE_DIR = join(homedir(), ".claude-replay", "autosave");
+const autosaveTimers = new Map(); // sessionId → timeout handle
+
+function autosaveKey(sourcePath) {
+  return createHash("sha256").update(sourcePath).digest("hex").slice(0, 16) + ".json";
+}
+
+function autosavePath(sourcePath) {
+  return join(AUTOSAVE_DIR, autosaveKey(sourcePath));
+}
+
+/** Schedule an autosave (throttled: at most once per 2 seconds per session). */
+function scheduleAutosave(session) {
+  const id = session.sourcePath;
+  if (autosaveTimers.has(id)) return; // already scheduled
+  autosaveTimers.set(id, setTimeout(() => {
+    autosaveTimers.delete(id);
+    try {
+      mkdirSync(AUTOSAVE_DIR, { recursive: true });
+      const data = {
+        sourcePath: session.sourcePath,
+        workingTurns: session.workingTurns,
+        excludedTurns: session.excludedTurns || [],
+        bookmarks: session.bookmarks || [],
+      };
+      writeFileSync(autosavePath(session.sourcePath), JSON.stringify(data));
+    } catch { /* ignore write errors */ }
+  }, 2000));
+}
+
+/** Load autosave data for a source path, if it exists. */
+function loadAutosave(sourcePath) {
+  try {
+    const p = autosavePath(sourcePath);
+    if (!existsSync(p)) return null;
+    return JSON.parse(readFileSync(p, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+/** Delete autosave for a source path. */
+function deleteAutosave(sourcePath) {
+  try {
+    const p = autosavePath(sourcePath);
+    if (existsSync(p)) unlinkSync(p);
+  } catch { /* ignore */ }
+}
 
 // ---------------------------------------------------------------------------
 // HTTP helpers
@@ -423,23 +477,28 @@ async function handleApi(req, res, pathname) {
         turns = parseTranscript(filePath);
       }
       const id = "s" + (++sessionCounter);
+      const saved = loadAutosave(filePath);
+      const restoredTurns = saved ? saved.workingTurns : turns;
+      const restoredExcluded = saved ? (saved.excludedTurns || []) : [];
+      const restoredBookmarks = saved ? (saved.bookmarks || []) : (bookmarks || []).map((bm) => [bm.turn, bm.label]);
+      const hasEdits = saved ? JSON.stringify(restoredTurns) !== JSON.stringify(turns) : false;
       sessions.set(id, {
         originalTurns: JSON.parse(JSON.stringify(turns)),
-        workingTurns: turns,
+        workingTurns: restoredTurns,
         sourcePath: filePath,
         format,
         extractedBookmarks: bookmarks || [],
-        excludedTurns: [],
-        bookmarks: (bookmarks || []).map((bm) => [bm.turn, bm.label]),
+        excludedTurns: restoredExcluded,
+        bookmarks: restoredBookmarks,
       });
       return json(res, {
         sessionId: id,
         format,
-        hasEdits: false,
-        turns: summarizeTurns(turns),
+        hasEdits,
+        turns: summarizeTurns(restoredTurns),
         bookmarks: bookmarks || [],
-        excludedTurns: [],
-        savedBookmarks: (bookmarks || []).map((bm) => [bm.turn, bm.label]),
+        excludedTurns: restoredExcluded,
+        savedBookmarks: restoredBookmarks,
       });
     } catch (e) {
       return error(res, `Failed to parse: ${e.message}`, 500);
@@ -489,6 +548,7 @@ async function handleApi(req, res, pathname) {
     const turn = session.workingTurns.find((t) => t.index === turnIndex);
     if (!turn) return error(res, `Turn ${turnIndex} not found`, 404);
     turn.user_text = user_text;
+    scheduleAutosave(session);
     const hasEdits = JSON.stringify(session.workingTurns) !== JSON.stringify(session.originalTurns);
     return json(res, { ok: true, hasEdits });
   }
@@ -521,6 +581,7 @@ async function handleApi(req, res, pathname) {
     // Persist client-side state so it survives session switching
     session.excludedTurns = options.excludeTurns || [];
     session.bookmarks = (options.bookmarks || []).map((bm) => [bm.turn, bm.label]);
+    scheduleAutosave(session);
     const turns = prepareTurns(session, options);
     const html = render(turns, buildRenderOpts(options, session));
     return json(res, { html });
@@ -555,6 +616,7 @@ async function handleApi(req, res, pathname) {
     session.workingTurns = JSON.parse(JSON.stringify(session.originalTurns));
     session.excludedTurns = [];
     session.bookmarks = [];
+    deleteAutosave(session.sourcePath);
     return json(res, { turns: summarizeTurns(session.workingTurns) });
   }
 

@@ -898,7 +898,7 @@ body.sidebar-collapsed .sidebar-edge-toggle { left: 16px; }
         <li><b>Export HTML</b> — download the replay as a self-contained HTML file</li>
         <li><b>Export JSON</b> — download the session data (turns and bookmarks) as JSON</li>
       </ul>
-      <p>The preview updates live as you edit.</p>
+      <p>The preview updates live as you edit. Edits are automatically saved to <code>~/.claude-replay/autosave/</code> and restored when you reopen a session. Reset clears the autosave.</p>
 
       <h3>Supported Formats</h3>
       <ul>
@@ -912,6 +912,22 @@ body.sidebar-collapsed .sidebar-edge-toggle { left: 16px; }
       <p>The editor runs locally on <code>127.0.0.1</code>. Your session data never leaves your machine. Original transcript files are never modified.</p>
 
       <p class="modal-footer-link"><a href="https://github.com/anthropics/claude-replay" target="_blank" rel="noopener">GitHub</a> &middot; <a href="https://github.com/anthropics/claude-replay/issues" target="_blank" rel="noopener">Report an issue</a> &middot; <span id="helpVersion"></span></p>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm modal -->
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal" style="width:380px">
+    <div class="modal-header">
+      <span class="modal-title" id="confirmTitle">Confirm</span>
+    </div>
+    <div class="modal-body">
+      <p id="confirmMessage"></p>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+        <button class="btn" id="confirmCancel">Cancel</button>
+        <button class="btn btn-warn" id="confirmOk">Reset</button>
+      </div>
     </div>
   </div>
 </div>
@@ -978,6 +994,28 @@ body.sidebar-collapsed .sidebar-edge-toggle { left: 16px; }
   const importHtmlFile    = $("importHtmlFile");
   const themeModeBtn      = $("themeModeBtn");
   const helpBtn           = $("helpBtn");
+  const confirmModal      = $("confirmModal");
+  const confirmTitle      = $("confirmTitle");
+  const confirmMessage    = $("confirmMessage");
+  const confirmOk         = $("confirmOk");
+  const confirmCancel     = $("confirmCancel");
+
+  function showConfirm(title, message) {
+    confirmTitle.textContent = title;
+    confirmMessage.textContent = message;
+    confirmModal.classList.add("open");
+    return new Promise((resolve) => {
+      function cleanup() {
+        confirmModal.classList.remove("open");
+        confirmOk.removeEventListener("click", onOk);
+        confirmCancel.removeEventListener("click", onCancel);
+      }
+      function onOk() { cleanup(); resolve(true); }
+      function onCancel() { cleanup(); resolve(false); }
+      confirmOk.addEventListener("click", onOk);
+      confirmCancel.addEventListener("click", onCancel);
+    });
+  }
   const helpModal         = $("helpModal");
   const helpModalClose    = $("helpModalClose");
   const sessionsToggle    = $("sessionsToggle");
@@ -1163,10 +1201,13 @@ body.sidebar-collapsed .sidebar-edge-toggle { left: 16px; }
   // Load session
   // =========================================================================
 
-  function updateEditState(hasEdits) {
-    resetBtn.classList.toggle("btn-warn", hasEdits);
+  let hasTextEdits = false;
+  function updateEditState(textEdits) {
+    if (textEdits !== undefined) hasTextEdits = textEdits;
+    const hasChanges = hasTextEdits || excludedTurns.size > 0 || bookmarks.size > 0;
+    resetBtn.classList.toggle("btn-warn", hasChanges);
     const activeItem = document.querySelector(".session-item.active");
-    if (activeItem) activeItem.classList.toggle("edited", hasEdits);
+    if (activeItem) activeItem.classList.toggle("edited", hasChanges);
   }
 
   async function loadSession(path, itemEl) {
@@ -1316,6 +1357,7 @@ body.sidebar-collapsed .sidebar-edge-toggle { left: 16px; }
         card.querySelector("[data-action='expand']")?.classList.remove("open");
         card.querySelector(".turn-blocks-detail")?.classList.remove("open");
       }
+      updateEditState();
       schedulePreview();
     }
 
@@ -1328,6 +1370,7 @@ body.sidebar-collapsed .sidebar-edge-toggle { left: 16px; }
         bookmarks.delete(index);
         labelInput.disabled = true;
       }
+      updateEditState();
       schedulePreview();
     }
 
@@ -1440,6 +1483,11 @@ body.sidebar-collapsed .sidebar-edge-toggle { left: 16px; }
 
   async function doReset() {
     if (!currentSessionId) return;
+    const hasChanges = hasTextEdits || excludedTurns.size > 0 || bookmarks.size > 0;
+    if (hasChanges) {
+      const ok = await showConfirm("Reset Session", "Reset all edits, excluded turns, and bookmarks to the original session?");
+      if (!ok) return;
+    }
     try {
       const data = await apiJson("POST", "/api/reset", { sessionId: currentSessionId });
       currentTurns = data.turns;
@@ -1583,6 +1631,7 @@ body.sidebar-collapsed .sidebar-edge-toggle { left: 16px; }
     excludedTurns.clear();
     turnsList.querySelectorAll("[data-action='toggle']").forEach((cb) => { cb.checked = true; });
     turnsList.querySelectorAll(".turn-card").forEach((card) => card.classList.remove("excluded"));
+    updateEditState();
     schedulePreview();
   });
   selectNoneBtn.addEventListener("click", () => {
@@ -1591,6 +1640,7 @@ body.sidebar-collapsed .sidebar-edge-toggle { left: 16px; }
     turnsList.querySelectorAll(".turn-card").forEach((card) => card.classList.add("excluded"));
     turnsList.querySelectorAll("[data-action='expand']").forEach((s) => s.classList.remove("open"));
     turnsList.querySelectorAll(".turn-blocks-detail").forEach((d) => d.classList.remove("open"));
+    updateEditState();
     schedulePreview();
   });
 
@@ -1620,6 +1670,7 @@ body.sidebar-collapsed .sidebar-edge-toggle { left: 16px; }
   });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && helpModal.classList.contains("open")) helpModal.classList.remove("open");
+    if (e.key === "Escape" && confirmModal.classList.contains("open")) confirmCancel.click();
   });
 
   // Resize handle

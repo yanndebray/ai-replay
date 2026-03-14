@@ -337,8 +337,9 @@ test("reset button restores original turns", async ({ page }) => {
   // Wait for edit to register
   await page.waitForTimeout(400);
 
-  // Reset
+  // Reset (accept custom confirmation modal)
   await page.locator("#resetBtn").click();
+  await page.locator("#confirmOk").click();
 
   // Text should be restored
   await expect(textarea).toHaveValue(originalText);
