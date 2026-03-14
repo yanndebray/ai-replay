@@ -824,6 +824,8 @@ body.sidebar-collapsed .sidebar-edge-toggle { left: 16px; }
     <div class="turns-toolbar" id="turnsToolbar">
       <button class="btn btn-small" id="selectAllBtn" title="Include all turns in the replay">Include All</button>
       <button class="btn btn-small" id="selectNoneBtn" title="Exclude all turns from the replay">Exclude All</button>
+      <button class="btn btn-small" id="expandAllBtn" title="Expand all assistant blocks">Expand All</button>
+      <button class="btn btn-small" id="collapseAllBtn" title="Collapse all assistant blocks">Collapse All</button>
     </div>
     <div class="turns-list" id="turnsList">
       <div class="empty-state">Select a session to begin editing</div>
@@ -959,6 +961,8 @@ body.sidebar-collapsed .sidebar-edge-toggle { left: 16px; }
   const turnsToolbar      = $("turnsToolbar");
   const selectAllBtn      = $("selectAllBtn");
   const selectNoneBtn     = $("selectNoneBtn");
+  const expandAllBtn      = $("expandAllBtn");
+  const collapseAllBtn    = $("collapseAllBtn");
   const turnsList         = $("turnsList");
   const previewIframe     = $("previewIframe");
   const refreshIndicator  = $("refreshIndicator");
@@ -1480,6 +1484,16 @@ body.sidebar-collapsed .sidebar-edge-toggle { left: 16px; }
     turnsList.querySelectorAll("[data-action='toggle']").forEach((cb) => { cb.checked = false; });
     turnsList.querySelectorAll(".turn-card").forEach((card) => card.classList.add("excluded"));
     schedulePreview();
+  });
+
+  // Expand / collapse all blocks
+  expandAllBtn.addEventListener("click", () => {
+    turnsList.querySelectorAll("[data-action='expand']").forEach((s) => s.classList.add("open"));
+    turnsList.querySelectorAll(".turn-blocks-detail").forEach((d) => d.classList.add("open"));
+  });
+  collapseAllBtn.addEventListener("click", () => {
+    turnsList.querySelectorAll("[data-action='expand']").forEach((s) => s.classList.remove("open"));
+    turnsList.querySelectorAll(".turn-blocks-detail").forEach((d) => d.classList.remove("open"));
   });
 
   // Dark/light mode
