@@ -98,6 +98,29 @@ describe("editor-server API", () => {
     assert.ok(data.error);
   });
 
+  it("POST /api/search returns matching sessions with snippets", async () => {
+    const res = await fetch(`${baseUrl}/api/search`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: "BLE" }),
+    });
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.ok(Array.isArray(data.results));
+    // May or may not have results depending on what's in ~/.claude — just check structure
+  });
+
+  it("POST /api/search with short query returns empty", async () => {
+    const res = await fetch(`${baseUrl}/api/search`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: "ab" }),
+    });
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.deepEqual(data.results, []);
+  });
+
   it("POST /api/edit updates user text and reports hasEdits=true", async () => {
     const loadRes = await fetch(`${baseUrl}/api/load`, {
       method: "POST",

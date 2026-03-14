@@ -458,6 +458,44 @@ async function handleApi(req, res, pathname) {
     return json(res, { groups: discoverSessions(), homedir: homedir(), version: PKG.version });
   }
 
+  // POST /api/search — search session content across all discovered sessions
+  if (pathname === "/api/search" && req.method === "POST") {
+    const body = await readBody(req);
+    const query = (body.query || "").toLowerCase().trim();
+    if (!query || query.length < 3) return json(res, { results: [] });
+
+    const groups = discoverSessions();
+    const results = [];
+    const MAX_RESULTS = 30;
+
+    for (const group of groups) {
+      for (const proj of group.projects) {
+        for (const sess of proj.sessions) {
+          if (results.length >= MAX_RESULTS) break;
+          try {
+            const text = readFileSync(sess.path, "utf-8");
+            const lower = text.toLowerCase();
+            const idx = lower.indexOf(query);
+            if (idx === -1) continue;
+            // Extract snippet around match
+            const start = Math.max(0, idx - 40);
+            const end = Math.min(text.length, idx + query.length + 60);
+            const snippet = (start > 0 ? "..." : "") + text.slice(start, end).replace(/\n/g, " ") + (end < text.length ? "..." : "");
+            results.push({
+              group: group.name,
+              project: proj.name,
+              file: sess.file,
+              path: sess.path,
+              date: sess.date,
+              snippet,
+            });
+          } catch { /* skip unreadable files */ }
+        }
+      }
+    }
+    return json(res, { results });
+  }
+
   // GET /api/themes — list available themes
   if (pathname === "/api/themes" && req.method === "GET") {
     return json(res, listThemes());

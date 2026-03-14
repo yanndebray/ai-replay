@@ -318,6 +318,47 @@ body.sidebar-collapsed .sidebar-edge-toggle { left: 16px; }
   font-size: 12px;
 }
 .sessions-search:focus { outline: 1px solid var(--accent); }
+.search-hint {
+  font-size: 10px;
+  color: var(--text-dim);
+  padding: 1px 14px 2px;
+}
+.search-results {
+  padding: 4px 12px;
+  font-size: 11px;
+}
+.search-result-item {
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.search-result-item:hover { border-color: var(--accent); }
+.search-result-meta {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-bottom: 2px;
+}
+.search-result-snippet {
+  font-size: 11px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.search-result-snippet mark {
+  background: var(--orange);
+  color: var(--bg);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.search-status {
+  color: var(--text-dim);
+  font-style: italic;
+  padding: 4px 0;
+}
 .browse-path-input {
   width: calc(100% - 24px);
   margin: 4px 12px;
@@ -751,6 +792,8 @@ body.sidebar-collapsed .sidebar-edge-toggle { left: 16px; }
     <div class="sidebar-section open" id="sessionsSection">
       <div class="sessions-content">
         <input type="text" class="sessions-search" id="sessionsSearch" placeholder="Filter sessions...">
+        <div class="search-hint">Use <code>/</code> to search session content</div>
+        <div class="search-results" id="searchResults" style="display:none"></div>
         <div id="sessionsTree"></div>
         <div class="browse-section">
           <div class="browse-header browse-toggle" id="browseToggle">
@@ -1124,8 +1167,12 @@ body.sidebar-collapsed .sidebar-edge-toggle { left: 16px; }
   // Session search/filter
   // =========================================================================
 
-  sessionsSearch.addEventListener("input", () => {
-    const q = sessionsSearch.value.toLowerCase().trim();
+  const searchResults = $("searchResults");
+  let contentSearchDebounce;
+
+  function filterSessionsByName(q) {
+    searchResults.style.display = "none";
+    sessionsTree.style.display = "";
     sessionsTree.querySelectorAll(".session-project").forEach((proj) => {
       const projName = proj.querySelector(".session-project-name").textContent.toLowerCase();
       const items = proj.querySelectorAll(".session-item");
@@ -1136,13 +1183,11 @@ body.sidebar-collapsed .sidebar-edge-toggle { left: 16px; }
         if (match) anyVisible = true;
       });
       proj.style.display = anyVisible ? "" : "none";
-      // Auto-expand matching projects when searching
       if (anyVisible && q) {
         proj.querySelector(".session-project-name").classList.add("open");
         proj.querySelector(".session-list").classList.add("open");
       }
     });
-    // Hide group labels if all their projects are hidden
     sessionsTree.querySelectorAll(".session-group-label").forEach((label) => {
       let next = label.nextElementSibling;
       let anyGroupVisible = false;
@@ -1152,6 +1197,56 @@ body.sidebar-collapsed .sidebar-edge-toggle { left: 16px; }
       }
       label.style.display = anyGroupVisible ? "" : "none";
     });
+  }
+
+  function highlightSnippet(snippet, query) {
+    const lower = snippet.toLowerCase();
+    const idx = lower.indexOf(query.toLowerCase());
+    if (idx === -1) return esc(snippet);
+    return esc(snippet.slice(0, idx)) + "<mark>" + esc(snippet.slice(idx, idx + query.length)) + "</mark>" + esc(snippet.slice(idx + query.length));
+  }
+
+  async function searchContent(query) {
+    sessionsTree.style.display = "none";
+    searchResults.style.display = "";
+    searchResults.innerHTML = '<div class="search-status">Searching...</div>';
+    try {
+      const data = await apiJson("POST", "/api/search", { query });
+      if (data.results.length === 0) {
+        searchResults.innerHTML = '<div class="search-status">No matches found</div>';
+        return;
+      }
+      let html = "";
+      for (const r of data.results) {
+        html += `<div class="search-result-item" data-path="${esc(r.path)}">
+          <div class="search-result-meta">${esc(r.group)} / ${esc(r.project)} / ${esc(r.file)}</div>
+          <div class="search-result-snippet">${highlightSnippet(r.snippet, query)}</div>
+        </div>`;
+      }
+      searchResults.innerHTML = html;
+      searchResults.querySelectorAll(".search-result-item").forEach((el) => {
+        el.addEventListener("click", () => loadSession(el.dataset.path, null));
+      });
+    } catch (e) {
+      searchResults.innerHTML = `<div class="search-status">Search failed: ${esc(e.message)}</div>`;
+    }
+  }
+
+  sessionsSearch.addEventListener("input", () => {
+    const raw = sessionsSearch.value;
+    clearTimeout(contentSearchDebounce);
+    if (raw.startsWith("/")) {
+      const query = raw.slice(1).trim();
+      if (query.length < 3) {
+        sessionsTree.style.display = "none";
+        searchResults.style.display = "";
+        searchResults.innerHTML = '<div class="search-status">Type at least 3 characters to search content...</div>';
+        return;
+      }
+      contentSearchDebounce = setTimeout(() => searchContent(query), 400);
+    } else {
+      filterSessionsByName(raw.toLowerCase().trim());
+    }
   });
 
   // =========================================================================
