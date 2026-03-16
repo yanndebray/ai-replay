@@ -141,7 +141,7 @@ The editor runs a local server on `127.0.0.1` (localhost only, not exposed to th
 ```
 claude-replay [--port N]                        Launch the web editor (default)
 claude-replay <input> [input2...] [options]     Generate replay from CLI
-claude-replay extract <replay.html> [-o output.json]
+claude-replay extract <replay.html> [-o output.jsonl] [--format jsonl|json]
 ```
 
 Each `<input>` can be a `.jsonl` file path or a session ID. If it does not end in `.jsonl` and is not an existing file path, it is treated as a session ID. claude-replay searches `~/.claude/projects/`, `~/.cursor/projects/`, and `~/.codex/sessions/` for a matching session file. You can find your current session ID in Claude Code by running `/status`.
@@ -156,13 +156,18 @@ Alias for the default behavior — launches the web-based replay editor. See [We
 
 #### `extract`
 
-Extract the embedded turn data from a previously generated replay HTML file. Useful when the original JSONL is no longer available and you want to regenerate with different options.
+Extract the embedded turn data from a previously generated replay HTML file. Outputs JSONL by default (one turn per line, bookmarks embedded). Use `--format json` for the legacy JSON format.
 
 ```bash
-claude-replay extract replay.html -o turns.json  # save to file
+claude-replay extract replay.html -o session.jsonl            # JSONL (default)
+claude-replay extract replay.html -o data.json --format json  # JSON
+
+# Round-trip: extract, then regenerate with different options
+claude-replay extract replay.html -o session.jsonl
+claude-replay session.jsonl -o new-replay.html --theme dracula
 ```
 
-Note: the extracted data is the *parsed* representation (system tags stripped, secrets redacted, turns structured), not a verbatim copy of the original JSONL transcript.
+The extracted JSONL can be fed back into `claude-replay` to regenerate with different options. Bookmarks are preserved as a `bookmark` field on each turn.
 
 ### Options
 

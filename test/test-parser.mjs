@@ -1,6 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { parseTranscript, filterTurns, detectFormat, applyPacedTiming } from "../src/parser.mjs";
+import { writeFileSync, unlinkSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 const FIXTURE = new URL("./fixture.jsonl", import.meta.url).pathname;
 const CURSOR_FIXTURE = new URL("./fixture-cursor.jsonl", import.meta.url).pathname;
@@ -226,6 +229,43 @@ describe("Codex format", () => {
   it("preserves timestamps on turns", () => {
     const turns = parseTranscript(CODEX_FIXTURE);
     assert.ok(turns[0].timestamp.startsWith("2026-03-13"));
+  });
+});
+
+describe("Replay JSONL format", () => {
+  const replayLines = [
+    JSON.stringify({ index: 1, user_text: "Hello", blocks: [{ kind: "text", text: "Hi!" }], timestamp: "2025-01-01T00:00:00Z" }),
+    JSON.stringify({ index: 2, user_text: "Bye", blocks: [{ kind: "text", text: "Goodbye" }], timestamp: "2025-01-01T00:01:00Z", bookmark: "End" }),
+  ];
+  let tmpFile;
+
+  it("detectFormat identifies replay format", () => {
+    tmpFile = join(tmpdir(), `replay-test-${process.pid}.jsonl`);
+    writeFileSync(tmpFile, replayLines.join("\n"));
+    assert.equal(detectFormat(tmpFile), "replay");
+  });
+
+  it("parseTranscript reads replay JSONL turns", () => {
+    const turns = parseTranscript(tmpFile);
+    assert.equal(turns.length, 2);
+    assert.equal(turns[0].user_text, "Hello");
+    assert.equal(turns[0].blocks[0].text, "Hi!");
+    assert.equal(turns[1].user_text, "Bye");
+  });
+
+  it("preserves bookmark field on turns", () => {
+    const turns = parseTranscript(tmpFile);
+    assert.equal(turns[1].bookmark, "End");
+    assert.equal(turns[0].bookmark, undefined);
+    try { unlinkSync(tmpFile); } catch {}
+  });
+
+  it("does not confuse replay format with claude-code", () => {
+    const claudeLine = JSON.stringify({ type: "user", message: { role: "user", content: "hi" } });
+    const tmp = join(tmpdir(), `detect-test-${process.pid}.jsonl`);
+    writeFileSync(tmp, claudeLine);
+    assert.equal(detectFormat(tmp), "claude-code");
+    try { unlinkSync(tmp); } catch {}
   });
 });
 

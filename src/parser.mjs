@@ -74,6 +74,7 @@ function detectFormatFromText(text) {
     if (!trimmed) continue;
     try {
       const obj = JSON.parse(trimmed);
+      if (obj.user_text !== undefined && obj.blocks !== undefined) return "replay";
       if (obj.type === "session_meta") return "codex";
       if (obj.type === "user" || obj.type === "assistant") return "claude-code";
       if (obj.role === "user" || obj.role === "assistant") return "cursor";
@@ -309,6 +310,27 @@ function extractCodexUserText(text) {
 
 /**
  * Parse a Codex CLI JSONL transcript into Turn[].
+/**
+ * Parse a replay JSONL file (output of `claude-replay extract`).
+ * Each line is a turn object with { index, user_text, blocks, timestamp }.
+ * An optional final line with { type: "bookmarks" } contains bookmarks.
+ */
+function parseReplayJsonl(text) {
+  const turns = [];
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const obj = JSON.parse(trimmed);
+      if (obj.user_text !== undefined || obj.blocks !== undefined) {
+        turns.push(obj);
+      }
+    } catch { continue; }
+  }
+  return turns;
+}
+
+/**
  * Codex uses an event-based format with task_started/task_complete boundaries.
  */
 function parseCodexTranscript(text) {
@@ -530,6 +552,7 @@ export function parseTranscript(filePath) {
   const text = readFileSync(filePath, "utf-8");
   const format = detectFormatFromText(text);
   if (format === "codex") return parseCodexTranscript(text);
+  if (format === "replay") return parseReplayJsonl(text);
   const { entries, format: fmt } = parseJsonl(text);
   const turns = [];
   let i = 0;

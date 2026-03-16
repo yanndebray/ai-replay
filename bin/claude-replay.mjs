@@ -39,6 +39,7 @@ const options = {
   bookmarks: { type: "string" },
   "no-minify": { type: "boolean", default: false },
   "no-compress": { type: "boolean", default: false },
+  format: { type: "string" },
   open: { type: "boolean", default: false },
   version: { type: "boolean", short: "v", default: false },
   help: { type: "boolean", short: "h", default: false },
@@ -133,7 +134,7 @@ Options:
 if (positionals[0] === "extract") {
   const htmlFile = positionals[1];
   if (!htmlFile) {
-    console.error("Error: input file is required. Usage: claude-replay extract <replay.html> [-o output.json]");
+    console.error("Error: input file is required. Usage: claude-replay extract <replay.html> [-o output.jsonl] [--format jsonl|json]");
     process.exit(1);
   }
   if (!existsSync(htmlFile)) {
@@ -148,12 +149,28 @@ if (positionals[0] === "extract") {
     console.error(`Error: ${e.message}`);
     process.exit(1);
   }
-  const json = JSON.stringify(data, null, 2);
+  const fmt = values.format || "jsonl";
+  if (fmt !== "json" && fmt !== "jsonl") {
+    console.error(`Error: unknown --format "${fmt}". Use jsonl (default) or json.`);
+    process.exit(1);
+  }
+  let output;
+  if (fmt === "json") {
+    output = JSON.stringify(data, null, 2);
+  } else {
+    // Embed bookmarks into turns
+    const bmMap = new Map(data.bookmarks.map((bm) => [bm.turn, bm.label]));
+    const lines = data.turns.map((t) => {
+      const label = bmMap.get(t.index);
+      return JSON.stringify(label ? { ...t, bookmark: label } : t);
+    });
+    output = lines.join("\n");
+  }
   if (values.output) {
-    writeFileSync(values.output, json);
+    writeFileSync(values.output, output);
     console.error(`Wrote ${values.output} (${data.turns.length} turns, ${data.bookmarks.length} bookmarks)`);
   } else {
-    process.stdout.write(json + "\n");
+    process.stdout.write(output + "\n");
   }
   process.exit(0);
 }
@@ -252,7 +269,7 @@ for (const file of inputFiles) {
   const fileTurns = parseTranscript(file);
   if (inputFiles.length > 1) {
     const f = detectFormat(file);
-    if (f === "cursor") format = "cursor"; // if any is cursor, use cursor label
+    if (f === "cursor") format = "cursor";
   }
   allTurns.push(...fileTurns);
 }
@@ -364,8 +381,17 @@ if (values.bookmarks) {
 // Remap bookmark turn indices to match re-indexed turns
 bookmarks = bookmarks
   .map((bm) => ({ turn: indexMap.get(bm.turn), label: bm.label }))
-  .filter((bm) => bm.turn != null)
-  .sort((a, b) => a.turn - b.turn);
+  .filter((bm) => bm.turn != null);
+
+// Extract bookmarks embedded in turns (from replay JSONL format)
+for (const t of turns) {
+  if (t.bookmark) {
+    bookmarks.push({ turn: t.index, label: t.bookmark });
+    delete t.bookmark;
+  }
+}
+
+bookmarks.sort((a, b) => a.turn - b.turn);
 
 // Parse --redact rules
 let redactRules;

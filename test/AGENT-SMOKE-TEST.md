@@ -104,14 +104,23 @@ node bin/claude-replay.mjs test/fixture.jsonl test/fixture-cursor.jsonl -o /tmp/
 
 - Should say "5 turns" (3 + 2)
 
-## 9. CLI — extract
+## 9. CLI — extract and round-trip
 
 ```bash
-node bin/claude-replay.mjs extract /tmp/smoke-claude.html -o /tmp/smoke-extracted.json 2>&1
-```
+# Extract as JSONL (default)
+node bin/claude-replay.mjs extract /tmp/smoke-bookmarks.html -o /tmp/smoke-extracted.jsonl 2>&1
+# Should say "3 turns, 2 bookmarks"
 
-- Verify the JSON file contains turn data
-- Verify: `node -e "const d=JSON.parse(require('fs').readFileSync('/tmp/smoke-extracted.json','utf8')); console.log(d.turns.length)"` prints 3
+# Extract as JSON (legacy)
+node bin/claude-replay.mjs extract /tmp/smoke-claude.html -o /tmp/smoke-extracted.json --format json 2>&1
+node -e "const d=JSON.parse(require('fs').readFileSync('/tmp/smoke-extracted.json','utf8')); console.log(d.turns.length)"
+# Should print 3
+
+# Round-trip: extracted JSONL → new HTML with bookmarks preserved
+node bin/claude-replay.mjs /tmp/smoke-extracted.jsonl -o /tmp/smoke-roundtrip.html --no-minify --no-compress 2>&1
+# Should say "3 turns"
+# Verify bookmarks: grep -c '"label"' /tmp/smoke-roundtrip.html should be > 0
+```
 
 ## 10. Editor server
 
