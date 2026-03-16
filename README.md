@@ -60,6 +60,26 @@ Or run directly with npx (zero install):
 npx claude-replay
 ```
 
+### Docker
+
+```bash
+docker run --rm -p 7331:7331 \
+  -v ~/.claude/projects:/root/.claude/projects:ro \
+  ghcr.io/es617/claude-replay
+```
+
+Open http://localhost:7331 for the web editor. Session directories are mounted read-only.
+
+For CLI usage:
+
+```bash
+docker run --rm \
+  -v ~/.claude/projects:/root/.claude/projects:ro \
+  -v $(pwd):/output \
+  ghcr.io/es617/claude-replay \
+  /root/.claude/projects/my-project/session.jsonl -o /output/replay.html
+```
+
 ## Quick start
 
 ```bash

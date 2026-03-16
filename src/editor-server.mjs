@@ -661,7 +661,7 @@ async function handleApi(req, res, pathname) {
  * @param {number} port
  * @returns {Promise<void>}
  */
-export function startEditor(port, { open = true } = {}) {
+export function startEditor(port, { open = true, host = "127.0.0.1" } = {}) {
   const editorHtml = readFileSync(EDITOR_HTML_PATH, "utf-8");
 
   const server = createServer(async (req, res) => {
@@ -700,8 +700,8 @@ export function startEditor(port, { open = true } = {}) {
       }
       process.exit(1);
     });
-    server.listen(port, "127.0.0.1", () => {
-      const url = `http://127.0.0.1:${port}`;
+    server.listen(port, host, () => {
+      const url = `http://${host === "0.0.0.0" ? "localhost" : host}:${port}`;
       console.log(`claude-replay editor running at ${url}`);
       console.log("Press Ctrl+C to stop.\n");
       if (open) {
