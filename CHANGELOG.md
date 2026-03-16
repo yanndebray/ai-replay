@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.1
+
+### New
+- Docker support — image published to GHCR on each release
+- `--host` flag for editor server (use `0.0.0.0` for Docker/container access)
+- `extract` now outputs JSONL by default (one turn per line, bookmarks embedded)
+- Extracted JSONL can be fed back into `claude-replay` to regenerate with different options
+- `--format json` flag to preserve legacy JSON output from extract
+
 ## 0.5.0
 
 ### Editor
