@@ -661,7 +661,7 @@ async function handleApi(req, res, pathname) {
  * @param {number} port
  * @returns {Promise<void>}
  */
-export function startEditor(port, { open = true, host = "127.0.0.1" } = {}) {
+export function startEditor(port, { open = true, host = "127.0.0.1", initialFile } = {}) {
   const editorHtml = readFileSync(EDITOR_HTML_PATH, "utf-8");
 
   const server = createServer(async (req, res) => {
@@ -701,13 +701,15 @@ export function startEditor(port, { open = true, host = "127.0.0.1" } = {}) {
       process.exit(1);
     });
     server.listen(port, host, () => {
-      const url = `http://${host === "0.0.0.0" ? "localhost" : host}:${port}`;
-      console.log(`claude-replay editor running at ${url}`);
+      const baseUrl = `http://${host === "0.0.0.0" ? "localhost" : host}:${port}`;
+      const openUrl = initialFile ? `${baseUrl}?load=${encodeURIComponent(initialFile)}` : baseUrl;
+      console.log(`claude-replay editor running at ${baseUrl}`);
+      if (initialFile) console.log(`Auto-loading: ${initialFile}`);
       console.log("Press Ctrl+C to stop.\n");
       if (open) {
         const cmd = process.platform === "darwin" ? "open"
           : process.platform === "win32" ? "start" : "xdg-open";
-        execFile(cmd, [url], () => {});
+        execFile(cmd, [openUrl], () => {});
       }
     });
   });

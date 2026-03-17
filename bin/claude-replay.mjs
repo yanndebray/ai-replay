@@ -5,7 +5,7 @@
  */
 
 import { parseArgs } from "node:util";
-import { basename, dirname } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { parseTranscript, filterTurns, detectFormat, applyPacedTiming } from "../src/parser.mjs";
@@ -74,15 +74,42 @@ if (positionals.length === 0 || positionals[0] === "editor") {
     const { startEditor } = await import("../src/editor-server.mjs");
     const port = values.port ? parseInt(values.port, 10) : 7331;
     const host = values.host || "127.0.0.1";
-    await startEditor(port, { host });
+    // Optional: auto-load a file or session ID
+    let initialFile;
+    const editorArg = positionals[0] === "editor" ? positionals[1] : undefined;
+    if (editorArg) {
+      if (existsSync(editorArg)) {
+        initialFile = resolve(editorArg);
+      } else if (!editorArg.endsWith(".jsonl")) {
+        const { resolveSessionId } = await import("../src/resolve-session.mjs");
+        const matches = resolveSessionId(editorArg);
+        if (matches.length === 1) {
+          initialFile = matches[0].path;
+          console.error(`Found: ${matches[0].group} / ${matches[0].project} → ${matches[0].path}`);
+        } else if (matches.length > 1) {
+          console.error(`Multiple sessions match "${editorArg}":`);
+          for (let i = 0; i < matches.length; i++) {
+            console.error(`  ${i + 1}) ${matches[i].group} / ${matches[i].project} — ${matches[i].path}`);
+          }
+          process.exit(1);
+        } else {
+          console.error(`Warning: no session found matching "${editorArg}", opening editor without auto-load`);
+        }
+      } else {
+        console.error(`Error: file not found: ${editorArg}`);
+        process.exit(1);
+      }
+    }
+    await startEditor(port, { host, initialFile });
     // startEditor returns a promise that never resolves — server stays running
   }
 }
 
 if (values.help) {
   console.log(`Usage: claude-replay [--port N]         Launch the web editor (default)
+       claude-replay editor [file|id]               Launch editor with a session auto-loaded
        claude-replay <input> [input2...] [options]  Generate replay from CLI
-       claude-replay extract <replay.html> [-o output.json]
+       claude-replay extract <replay.html> [-o output.jsonl]
 
 Convert Claude Code session transcripts into embeddable HTML replays.
 
@@ -96,6 +123,7 @@ used. Turns are re-indexed sequentially.
 
 Commands:
   (no args)             Launch web-based editor UI (default)
+  editor [file|id]      Launch editor with a file or session ID auto-loaded
   extract               Extract embedded turn data from a generated replay HTML
 
 Options:

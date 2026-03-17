@@ -1833,7 +1833,38 @@ body.sidebar-collapsed .sidebar-edge-toggle { left: 16px; }
   // Init
   // =========================================================================
 
-  loadSessions();
+  loadSessions().then(() => {
+    // Auto-load file from ?load= query param (after sessions are rendered)
+    const loadParam = new URLSearchParams(window.location.search).get("load");
+    if (!loadParam) return;
+
+    // Find matching sidebar item — try exact match, then match by filename
+    let item = sessionsTree.querySelector(`.session-item[data-path="${CSS.escape(loadParam)}"]`);
+    if (!item) {
+      const filename = loadParam.split("/").pop();
+      for (const el of sessionsTree.querySelectorAll(".session-item")) {
+        if (el.dataset.path && el.dataset.path.endsWith(filename)) {
+          item = el;
+          break;
+        }
+      }
+    }
+    // Expand parent project and group so the item is visible
+    if (item) {
+      const proj = item.closest(".session-project");
+      if (proj) {
+        proj.querySelector(".session-project-name")?.classList.add("open");
+        proj.querySelector(".session-list")?.classList.add("open");
+      }
+      const groupContent = item.closest(".session-group-content");
+      if (groupContent) {
+        const groupLabel = groupContent.previousElementSibling;
+        if (groupLabel) groupLabel.classList.add("open");
+      }
+    }
+    loadSession(loadParam, item);
+    history.replaceState(null, "", window.location.pathname);
+  });
   loadThemes();
 })();
 </script>

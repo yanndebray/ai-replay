@@ -71,6 +71,12 @@ describe("CLI flags", () => {
     assert.match(stdout, /<!DOCTYPE html>/);
   });
 
+  it("editor with nonexistent .jsonl file shows error", async () => {
+    const { code, stderr } = await run(["editor", "nonexistent-file.jsonl"]);
+    assert.notEqual(code, 0);
+    assert.match(stderr, /file not found/);
+  });
+
   it("extract outputs JSONL by default", async () => {
     const { code: genCode } = await run([FIXTURE, "--mark", "1:BM", "-o", "/tmp/cli-extract-test.html", "--no-minify"]);
     assert.equal(genCode, 0);
