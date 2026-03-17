@@ -5,7 +5,7 @@
 import { createServer } from "node:http";
 import { readFileSync, readdirSync, statSync, writeFileSync, mkdirSync, unlinkSync, existsSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { resolve, join, dirname } from "node:path";
+import { resolve, join, dirname, sep } from "node:path";
 import { homedir } from "node:os";
 import { execFile } from "node:child_process";
 import { parseTranscript, filterTurns, detectFormat, applyPacedTiming } from "./parser.mjs";
@@ -295,7 +295,7 @@ function buildRenderOpts(options, session, overrides = {}) {
 function assertUnderHome(targetPath) {
   const resolved = resolve(targetPath);
   const home = homedir();
-  if (!resolved.startsWith(home + "/") && resolved !== home) {
+  if (!resolved.startsWith(home + sep) && resolved !== home) {
     const err = new Error("Access denied: path must be under your home directory");
     err.code = "EACCES";
     throw err;
