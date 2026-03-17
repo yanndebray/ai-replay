@@ -150,9 +150,15 @@ Multiple inputs are concatenated into a single replay (up to 20). When all sessi
 
 ### Commands
 
-#### `editor`
+#### `editor [file|session-id]`
 
-Alias for the default behavior — launches the web-based replay editor. See [Web Editor](#web-editor) above.
+Launches the web-based replay editor. Optionally pass a file path or session ID to auto-load it on startup. See [Web Editor](#web-editor) above.
+
+```bash
+claude-replay editor                              # empty editor
+claude-replay editor ~/.claude/projects/.../session.jsonl  # auto-load file
+claude-replay editor abc123                       # auto-load by session ID
+```
 
 #### `extract`
 
