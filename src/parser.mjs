@@ -68,7 +68,7 @@ export function detectFormat(filePath) {
   return detectFormatFromText(readFileSync(filePath, "utf-8"));
 }
 
-function detectFormatFromText(text) {
+export function detectFormatFromText(text) {
   for (const line of text.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -549,7 +549,15 @@ function parseCodexTranscript(text) {
  * @returns {Turn[]}
  */
 export function parseTranscript(filePath) {
-  const text = readFileSync(filePath, "utf-8");
+  return parseTranscriptFromText(readFileSync(filePath, "utf-8"));
+}
+
+/**
+ * Parse a transcript from text content (browser-compatible, no filesystem access).
+ * @param {string} text
+ * @returns {Turn[]}
+ */
+export function parseTranscriptFromText(text) {
   const format = detectFormatFromText(text);
   if (format === "codex") return parseCodexTranscript(text);
   if (format === "replay") return parseReplayJsonl(text);

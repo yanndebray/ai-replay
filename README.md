@@ -16,7 +16,7 @@ AI coding sessions are great for development, but hard to share. Screen recordin
 
 ![Demo](https://raw.githubusercontent.com/es617/claude-replay/main/docs/demo.gif)
 
-**[Try the live demo](https://es617.github.io/claude-replay/demo-redaction.html)**
+**[Try it online](https://es617.github.io/claude-replay/)** · **[Live demo](https://es617.github.io/claude-replay/demo-redaction.html)**
 
 Claude Code, Cursor, and Codex CLI store conversation transcripts as JSONL files on disk. **claude-replay** auto-detects the format and converts them into visual replays suitable for blog posts, demos, and documentation.
 
