@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.2
+
+### New
+- `claude-replay editor <file|session-id>` — open the editor with a session pre-loaded
+
 ## 0.5.1
 
 ### New
