@@ -124,11 +124,12 @@ jobs:
       - name: Roundtrip — extract and verify
         if: env.HAS_ANTHROPIC == 'true'
         run: |
-          node bin/claude-replay.mjs extract /tmp/replay-claude.html -o /tmp/extracted.json 2>&1
+          node bin/claude-replay.mjs extract /tmp/replay-claude.html -o /tmp/extracted.jsonl 2>&1
           node -e "
-            const d = JSON.parse(require('fs').readFileSync('/tmp/extracted.json','utf8'));
-            console.log('Extracted', d.turns.length, 'turns');
-            if (d.turns.length === 0) process.exit(1);
+            const lines = require('fs').readFileSync('/tmp/extracted.jsonl','utf8').trim().split('\n');
+            const turns = lines.map(l => JSON.parse(l)).filter(t => t.user_text !== undefined);
+            console.log('Extracted', turns.length, 'turns');
+            if (turns.length === 0) process.exit(1);
           "
 
       # ── Collect artifacts ──────────────────────────────────
@@ -140,7 +141,7 @@ jobs:
           [ -n "$CODEX_SESSION" ] && cp "$CODEX_SESSION" /tmp/format-artifacts/codex-session.jsonl 2>/dev/null || true
           [ -n "$CURSOR_SESSION" ] && cp "$CURSOR_SESSION" /tmp/format-artifacts/cursor-session.jsonl 2>/dev/null || true
           cp /tmp/replay-*.html /tmp/format-artifacts/ 2>/dev/null || true
-          cp /tmp/extracted.json /tmp/format-artifacts/ 2>/dev/null || true
+          cp /tmp/extracted.jsonl /tmp/format-artifacts/ 2>/dev/null || true
 
       - name: Upload artifacts
         if: always()
