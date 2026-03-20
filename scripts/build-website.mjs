@@ -86,6 +86,7 @@ body {
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 code { background: var(--bg-surface); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+kbd { background: var(--bg-surface); border: 1px solid var(--border); padding: 1px 5px; border-radius: 3px; font-size: 11px; font-family: inherit; }
 .container { max-width: 900px; margin: 0 auto; padding: 0 24px; }
 
 /* Hero */
@@ -183,6 +184,7 @@ code { background: var(--bg-surface); padding: 2px 6px; border-radius: 4px; font
       <div class="drop-icon">&#128196;</div>
       <p>Drop a .jsonl session file here or <strong>click to browse</strong></p>
       <p style="margin-top:8px;font-size:12px">or <a href="#" id="tryDemo">load a demo session</a></p>
+      <p style="margin-top:12px;font-size:11px;color:var(--text-dim)">Tip: session files are in hidden folders. Press <kbd>Cmd+Shift+.</kbd> (macOS), <kbd>Ctrl+H</kbd> (Linux), or enable "Show hidden items" (Windows) in the file picker.</p>
       <input type="file" id="fileInput" accept=".jsonl">
     </div>
 
