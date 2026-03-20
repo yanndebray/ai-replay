@@ -16,6 +16,7 @@ import { extractData } from "../src/extract.mjs";
 const options = {
   port: { type: "string" },
   host: { type: "string" },
+  "no-origin-check": { type: "boolean", default: false },
   output: { type: "string", short: "o" },
   turns: { type: "string" },
   "exclude-turns": { type: "string" },
@@ -100,7 +101,7 @@ if (positionals.length === 0 || positionals[0] === "editor") {
         process.exit(1);
       }
     }
-    await startEditor(port, { host, initialFile });
+    await startEditor(port, { host, initialFile, noOriginCheck: values["no-origin-check"] });
     // startEditor returns a promise that never resolves — server stays running
   }
 }
@@ -129,6 +130,7 @@ Commands:
 Options:
   --port N                Port for the editor server (default: 7331)
   --host ADDR             Bind address for the editor server (default: 127.0.0.1)
+  --no-origin-check       Disable CSRF origin check (use with caution)
   -o, --output FILE       Output HTML file (default: stdout)
   --turns N-M             Only include turns N through M
   --exclude-turns N,N,... Exclude specific turns by index

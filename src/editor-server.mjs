@@ -437,19 +437,23 @@ function discoverSessions() {
 // API route handler
 // ---------------------------------------------------------------------------
 
+// Origin check configuration (set by startEditor)
+let _noOriginCheck = false;
+let _allowedOrigins = new Set();
+
 async function handleApi(req, res, pathname) {
   // CSRF protection: reject cross-origin requests to the API.
-  // The editor is served from 127.0.0.1, so legitimate requests have a
-  // matching Origin or no Origin at all (same-origin, curl, etc.).
-  const origin = req.headers.origin;
-  if (origin) {
-    try {
-      const originHost = new URL(origin).hostname;
-      if (originHost !== "127.0.0.1" && originHost !== "localhost") {
-        return error(res, "Cross-origin requests are not allowed", 403);
+  if (!_noOriginCheck) {
+    const origin = req.headers.origin;
+    if (origin) {
+      try {
+        const originHost = new URL(origin).hostname;
+        if (originHost !== "127.0.0.1" && originHost !== "localhost" && !_allowedOrigins.has(origin)) {
+          return error(res, "Cross-origin requests are not allowed", 403);
+        }
+      } catch {
+        return error(res, "Invalid Origin header", 403);
       }
-    } catch {
-      return error(res, "Invalid Origin header", 403);
     }
   }
 
@@ -661,7 +665,15 @@ async function handleApi(req, res, pathname) {
  * @param {number} port
  * @returns {Promise<void>}
  */
-export function startEditor(port, { open = true, host = "127.0.0.1", initialFile } = {}) {
+export function startEditor(port, { open = true, host = "127.0.0.1", initialFile, noOriginCheck = false, allowedOrigins } = {}) {
+  // Configure origin checking
+  _noOriginCheck = noOriginCheck;
+  const envOrigins = process.env.CLAUDE_REPLAY_ALLOWED_ORIGINS;
+  _allowedOrigins = new Set([
+    ...(allowedOrigins || []),
+    ...(envOrigins ? envOrigins.split(",").map((s) => s.trim()).filter(Boolean) : []),
+  ]);
+
   const editorHtml = readFileSync(EDITOR_HTML_PATH, "utf-8");
 
   const server = createServer(async (req, res) => {
