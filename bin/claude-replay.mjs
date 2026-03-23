@@ -416,9 +416,12 @@ function buildReplay() {
   }
 
   const hasTimestamps = turns.some((t) => t.timestamp);
-  if (timing === "paced" || (timing === "auto" && !hasTimestamps)) {
+  const usedPacing = timing === "paced" || (timing === "auto" && !hasTimestamps);
+  if (usedPacing) {
     applyPacedTiming(turns);
   }
+  // Real timestamps are available when we didn't replace them with pacing
+  const hasRealTimestamps = hasTimestamps && !usedPacing;
 
   let bookmarks = cliBookmarks
     .map((bm) => ({ turn: indexMap.get(bm.turn), label: bm.label }))
@@ -445,6 +448,7 @@ function buildReplay() {
     description: values.description,
     ogImage: values["og-image"],
     bookmarks,
+    hasRealTimestamps,
     minified: !values["no-minify"],
     compress: !values["no-compress"],
   });

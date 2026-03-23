@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { getFileUrl, getUncompressedFileUrl, getChapterFileUrl, waitForReady } from "./setup.mjs";
+import { getFileUrl, getUncompressedFileUrl, getChapterFileUrl, getPacedFileUrl, waitForReady } from "./setup.mjs";
 
 // Helpers
 const blockCount = (page, turn, hidden = false) =>
@@ -547,6 +547,38 @@ test("prev turn button skips to previous turn", async ({ page }) => {
   await goto(page, "turn=3");
   await page.locator("#btn-prev-turn").click();
   await expect(page.locator('.turn[data-index="2"]')).toHaveClass(/active/);
+});
+
+// ─── Auto-paced toggle ────────────────────────────────────
+
+test("auto-paced toggle visible in speed popover with real timestamps", async ({ page }) => {
+  await goto(page);
+  await pressKey(page, " ");
+  // Open speed popover
+  await page.locator("#speed-btn").click();
+  await expect(page.locator("#paced-toggle-wrap")).toBeVisible();
+});
+
+test("auto-paced toggle hidden when built with paced timing", async ({ page }) => {
+  await page.goto(getPacedFileUrl());
+  await waitForReady(page);
+  await pressKey(page, " ");
+  await page.locator("#speed-btn").click();
+  // The paced toggle should not exist in the speed popover
+  const toggle = page.locator("#paced-toggle-wrap");
+  await expect(toggle).toHaveCount(0);
+});
+
+test("toggling auto-paced changes timer display", async ({ page }) => {
+  await goto(page, "turn=3");
+  // Get real time display
+  const realTime = await page.locator("#progress-text").textContent();
+  // Open speed popover and toggle paced
+  await page.locator("#speed-btn").click();
+  await page.locator("#toggle-paced").check();
+  // Time should change
+  const pacedTime = await page.locator("#progress-text").textContent();
+  expect(pacedTime).not.toBe(realTime);
 });
 
 // ─── Hash reveal mode (#turn=Nr) ──────────────────────────

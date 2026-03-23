@@ -171,6 +171,19 @@ body.in-iframe .bar-title:hover {
 .speed-wrap {
   position: relative;
 }
+.paced-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  padding: 4px 12px;
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
+}
 .controls-secondary button {
   width: 34px;
   min-width: 34px;
@@ -977,6 +990,7 @@ body.in-iframe .more-open-link + hr.more-divider { display: block; }
             <span class="more-row-label">Speed</span>
             <button id="speed-btn2" title="Cycle speed">/*INITIAL_SPEED*/x</button>
           </div>
+          <label class="paced-toggle2" id="paced-toggle-wrap2" style="display:none" title="Smooth out pauses — timing based on content length instead of real time"><input type="checkbox" id="toggle-paced2"> Auto-paced</label>
           <hr class="more-divider">
           <label><input type="checkbox" id="toggle-thinking2" /*CHECKED_THINKING*/> Thinking</label>
           <label><input type="checkbox" id="toggle-tools2" /*CHECKED_TOOLS*/> Tools</label>
@@ -1043,24 +1057,60 @@ body.in-iframe .more-open-link + hr.more-divider { display: block; }
   const TURN_SCROLL_MS = 600;          // duration of scroll between turns
 
   // Compute session timestamps for elapsed/total timer
-  const sessionStart = TURNS.length > 0 && TURNS[0].timestamp
-    ? new Date(TURNS[0].timestamp).getTime()
-    : null;
-  // For each turn: start time (user message) and end time (last block)
-  const turnStartTimes = TURNS.map((t) =>
-    t.timestamp ? new Date(t.timestamp).getTime() : 0
-  );
-  const turnEndTimes = TURNS.map((t) => {
-    let latest = t.timestamp ? new Date(t.timestamp).getTime() : 0;
-    for (const b of t.blocks || []) {
-      if (b.timestamp) latest = Math.max(latest, new Date(b.timestamp).getTime());
-      if (b.tool_call?.resultTimestamp) latest = Math.max(latest, new Date(b.tool_call.resultTimestamp).getTime());
+  const hasRealTimestamps = /*HAS_REAL_TIMESTAMPS*/false;
+  let usePaced = false;
+
+  function computeRealTiming() {
+    const start = TURNS.length > 0 && TURNS[0].timestamp
+      ? new Date(TURNS[0].timestamp).getTime() : null;
+    const starts = TURNS.map((t) => t.timestamp ? new Date(t.timestamp).getTime() : 0);
+    const ends = TURNS.map((t) => {
+      let latest = t.timestamp ? new Date(t.timestamp).getTime() : 0;
+      for (const b of t.blocks || []) {
+        if (b.timestamp) latest = Math.max(latest, new Date(b.timestamp).getTime());
+        if (b.tool_call?.resultTimestamp) latest = Math.max(latest, new Date(b.tool_call.resultTimestamp).getTime());
+      }
+      return latest;
+    });
+    const total = start != null && ends.length ? ends[ends.length - 1] - start : 0;
+    return { start, starts, ends, total };
+  }
+
+  function computePacedTiming() {
+    let cursor = 0;
+    const starts = [];
+    const ends = [];
+    for (const turn of TURNS) {
+      starts.push(cursor);
+      cursor += 500; // pause before assistant responds
+      for (const b of turn.blocks || []) {
+        const len = (b.text || "").length;
+        cursor += Math.min(Math.max(len * 30, 1000), 10000);
+      }
+      ends.push(cursor);
     }
-    return latest;
-  });
-  const sessionTotalMs = sessionStart != null && turnEndTimes.length
-    ? turnEndTimes[turnEndTimes.length - 1] - sessionStart
-    : 0;
+    return { start: 0, starts, ends, total: cursor };
+  }
+
+  const realTiming = computeRealTiming();
+  const pacedTiming = computePacedTiming();
+  let sessionStart = realTiming.start;
+  let turnStartTimes = realTiming.starts;
+  let turnEndTimes = realTiming.ends;
+  let sessionTotalMs = realTiming.total;
+
+  function switchTiming(paced) {
+    usePaced = paced;
+    const t = paced ? pacedTiming : realTiming;
+    sessionStart = t.start;
+    turnStartTimes = t.starts;
+    turnEndTimes = t.ends;
+    sessionTotalMs = t.total;
+    displayedTimeMs = 0;
+    updateTimerDisplay();
+    syncTimerToBlock();
+    updateProgress();
+  }
 
   function formatTime(ms) {
     if (ms <= 0) return "0:00";
@@ -1101,8 +1151,10 @@ body.in-iframe .more-open-link + hr.more-divider { display: block; }
   const filterBtn = $("#filter-btn");
   const toggleThinking = $("#toggle-thinking");
   const toggleTools = $("#toggle-tools");
+  let togglePaced = $("#toggle-paced");
   const toggleThinking2 = $("#toggle-thinking2");
   const toggleTools2 = $("#toggle-tools2");
+  const togglePaced2 = $("#toggle-paced2");
   const moreWrap = $("#more-wrap");
   const moreBtn = $("#more-btn");
   const chapterWrap = $("#chapter-wrap");
@@ -2219,6 +2271,22 @@ body.in-iframe .more-open-link + hr.more-divider { display: block; }
     });
     speedPopover.appendChild(btn);
   }
+  // Add paced toggle to speed popover if real timestamps available
+  if (hasRealTimestamps) {
+    const pacedLabel = document.createElement("label");
+    pacedLabel.className = "paced-toggle";
+    pacedLabel.id = "paced-toggle-wrap";
+    pacedLabel.title = "Smooth out pauses — timing based on content length instead of real time";
+    pacedLabel.innerHTML = '<input type="checkbox" id="toggle-paced"> Auto-paced';
+    speedPopover.appendChild(pacedLabel);
+    const togglePacedEl = pacedLabel.querySelector("input");
+    togglePacedEl.addEventListener("change", () => {
+      togglePaced2.checked = togglePacedEl.checked;
+      switchTiming(togglePacedEl.checked);
+    });
+    // Replace the const reference
+    togglePaced = togglePacedEl;
+  }
 
   // Filter popover toggle
   filterBtn.addEventListener("click", (e) => {
@@ -2231,6 +2299,15 @@ body.in-iframe .more-open-link + hr.more-divider { display: block; }
   // Filter checkboxes
   toggleThinking.addEventListener("change", applyVisibility);
   toggleTools.addEventListener("change", applyVisibility);
+
+  // Auto-paced toggle (more menu version)
+  if (hasRealTimestamps) {
+    $("#paced-toggle-wrap2").style.display = "";
+  }
+  togglePaced2.addEventListener("change", () => {
+    if (togglePaced) togglePaced.checked = togglePaced2.checked;
+    switchTiming(togglePaced2.checked);
+  });
 
   // Chapter popover toggle (wired in bookmarks section below)
 

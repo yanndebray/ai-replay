@@ -119,6 +119,7 @@ export function renderFromTemplate(template, turns, opts = {}) {
   html = html.replaceAll("/*OG_IMAGE*/", escapeHtml(ogImage));
   html = html.replace("/*USER_LABEL*/", escapeHtml(userLabel));
   html = html.replace("/*ASSISTANT_LABEL*/", escapeHtml(assistantLabel));
+  html = html.replace("/*HAS_REAL_TIMESTAMPS*/false", String(opts.hasRealTimestamps || false));
 
   const embedData = (json) => escapeJsonForScript(json);
   html = html.replace("/*BOOKMARKS_DATA*/", () => embedData(JSON.stringify(bookmarks)));

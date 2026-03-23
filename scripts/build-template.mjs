@@ -34,6 +34,7 @@ const PLACEHOLDERS = [
   { pattern: "/*ASSISTANT_LABEL*/", token: "__PLACEHOLDER_ASSISTANT_LABEL__" },
   { pattern: "/*PAGE_DESCRIPTION*/", token: "__PLACEHOLDER_PAGE_DESCRIPTION__" },
   { pattern: "/*OG_IMAGE*/", token: "__PLACEHOLDER_OG_IMAGE__" },
+  { pattern: "/*HAS_REAL_TIMESTAMPS*/false", token: "__PLACEHOLDER_HAS_REAL_TIMESTAMPS__false" },
 ];
 
 // Replace placeholders with safe tokens

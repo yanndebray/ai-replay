@@ -239,10 +239,11 @@ function prepareTurns(session, options) {
   }
   const timing = options.timing || "auto";
   const hasTimestamps = cloned.some((t) => t.timestamp);
-  if (timing === "paced" || (timing === "auto" && !hasTimestamps)) {
+  const usedPacing = timing === "paced" || (timing === "auto" && !hasTimestamps);
+  if (usedPacing) {
     applyPacedTiming(cloned);
   }
-  return cloned;
+  return { turns: cloned, hasRealTimestamps: hasTimestamps && !usedPacing };
 }
 
 /**
@@ -602,7 +603,7 @@ async function handleApi(req, res, pathname) {
     const { sessionId, options = {} } = body;
     const session = sessions.get(sessionId);
     if (!session) return error(res, "Unknown session", 404);
-    const turns = prepareTurns(session, options);
+    const { turns } = prepareTurns(session, options);
     const excludedSet = new Set(options.excludeTurns || []);
     const bookmarksArr = remapBookmarks(options.bookmarks || [], session.workingTurns, excludedSet);
     const data = JSON.stringify({ turns, bookmarks: bookmarksArr }, null, 2);
@@ -625,8 +626,8 @@ async function handleApi(req, res, pathname) {
     session.excludedTurns = options.excludeTurns || [];
     session.bookmarks = options.bookmarks || [];
     scheduleAutosave(session);
-    const turns = prepareTurns(session, options);
-    const html = render(turns, buildRenderOpts(options, session));
+    const { turns, hasRealTimestamps } = prepareTurns(session, options);
+    const html = render(turns, buildRenderOpts(options, session, { hasRealTimestamps }));
     return json(res, { html });
   }
 
@@ -636,8 +637,9 @@ async function handleApi(req, res, pathname) {
     const { sessionId, options = {} } = body;
     const session = sessions.get(sessionId);
     if (!session) return error(res, "Unknown session", 404);
-    const turns = prepareTurns(session, options);
+    const { turns, hasRealTimestamps } = prepareTurns(session, options);
     const html = render(turns, buildRenderOpts(options, session, {
+      hasRealTimestamps,
       minified: options.minified !== false,
       compress: options.compress !== false,
     }));

@@ -160,6 +160,7 @@ export function render(turns, opts = {}) {
   html = html.replaceAll("/*OG_IMAGE*/", escapeHtml(ogImage));
   html = html.replace("/*USER_LABEL*/", escapeHtml(userLabel));
   html = html.replace("/*ASSISTANT_LABEL*/", escapeHtml(assistantLabel));
+  html = html.replace("/*HAS_REAL_TIMESTAMPS*/false", String(opts.hasRealTimestamps || false));
 
   // Data blobs last — they may contain text matching any of the above placeholders.
   // BOOKMARKS before TURNS, because TURNS data may contain the literal placeholder

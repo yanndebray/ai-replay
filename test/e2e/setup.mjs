@@ -5,7 +5,7 @@
 import { writeFileSync, mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { parseTranscript } from "../../src/parser.mjs";
+import { parseTranscript, applyPacedTiming } from "../../src/parser.mjs";
 import { render } from "../../src/renderer.mjs";
 
 const FIXTURE = new URL("./fixture.jsonl", import.meta.url).pathname;
@@ -15,10 +15,12 @@ const cache = {};
 function buildHtml(key, renderOpts) {
   if (!cache[key]) {
     const turns = parseTranscript(FIXTURE);
+    const hasRealTimestamps = turns.some((t) => t.timestamp);
     const html = render(turns, {
       title: "E2E Test",
       minified: false,
       redactSecrets: false,
+      hasRealTimestamps,
       ...renderOpts,
     });
     const path = join(dir, key + ".html");
@@ -34,6 +36,23 @@ export function getFileUrl(hash = "") {
 
 export function getUncompressedFileUrl(hash = "") {
   return "file://" + buildHtml("uncompressed", { compress: false }) + (hash ? "#" + hash : "");
+}
+
+export function getPacedFileUrl(hash = "") {
+  if (!cache["paced"]) {
+    const turns = parseTranscript(FIXTURE);
+    applyPacedTiming(turns);
+    const html = render(turns, {
+      title: "E2E Paced Test",
+      minified: false,
+      redactSecrets: false,
+      hasRealTimestamps: false,
+    });
+    const path = join(dir, "paced.html");
+    writeFileSync(path, html);
+    cache["paced"] = path;
+  }
+  return "file://" + cache["paced"] + (hash ? "#" + hash : "");
 }
 
 export function getChapterFileUrl(hash = "") {
