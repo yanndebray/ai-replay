@@ -17,6 +17,7 @@ from click_default_group import DefaultGroup
 from .parser import parse_session, detect_format
 from .renderer import render_html
 from .resolve_session import resolve_session_path
+from .discover import discover_sessions
 
 __version__ = "0.1.2"
 
@@ -181,7 +182,7 @@ def _build_replay(
 # CLI definition
 # ---------------------------------------------------------------------------
 
-@click.group(cls=DefaultGroup, default="generate", default_if_no_args=False)
+@click.group(cls=DefaultGroup, default="pick", default_if_no_args=True)
 @click.version_option(__version__, "-v", "--version")
 def main() -> None:
     """Convert Claude Code, Cursor, and Codex CLI session transcripts to
@@ -189,10 +190,56 @@ def main() -> None:
 
     \b
     Examples:
-      agent-replay session.jsonl -o replay.html
-      agent-replay <session-id> -o replay.html
-      agent-replay extract replay.html
+      ai-replay                         # interactive session picker (default)
+      ai-replay session.jsonl -o replay.html
+      ai-replay <session-id> -o replay.html
+      ai-replay extract replay.html
     """
+
+
+@main.command(name="pick")
+@click.option("--limit", default=20, show_default=True, help="Number of recent sessions to show.")
+@click.option("--agent", default=None, help="Filter by agent name (partial match, case-insensitive).")
+def pick(limit: int, agent: Optional[str]) -> None:
+    """Interactively pick a recent session and open it as a replay in your browser."""
+    try:
+        import questionary
+    except ImportError:
+        raise click.ClickException(
+            "questionary is required for the interactive picker.\n"
+            "Install it with: pip install questionary"
+        )
+
+    from datetime import datetime
+
+    click.echo("Loading sessions...", err=True)
+    sessions = discover_sessions(limit=limit)
+
+    if agent:
+        sessions = [s for s in sessions if agent.lower() in s.agent.lower()]
+
+    if not sessions:
+        click.echo("No sessions found. Try running Claude Code, Codex, or Cursor first.")
+        return
+
+    choices = []
+    for s in sessions:
+        date_str = datetime.fromtimestamp(s.mtime).strftime("%Y-%m-%d %H:%M")
+        size_kb = s.size_bytes / 1024
+        label = f"{s.agent:<12} {date_str}  {size_kb:>6.0f} KB  {s.summary}"
+        choices.append(questionary.Choice(title=label, value=s.path))
+
+    try:
+        selected = questionary.select("Select a session to replay:", choices=choices).ask()
+    except KeyboardInterrupt:
+        return
+
+    if selected is None:
+        return
+
+    # Generate HTML and open in browser
+    ctx = click.get_current_context()
+    ctx.invoke(generate, input=(str(selected),), open_browser=True)
 
 
 @main.command(name="generate")
