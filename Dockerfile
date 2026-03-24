@@ -1,7 +1,14 @@
-FROM node:22-alpine
+FROM python:3.12-alpine
 
-RUN npm install -g claude-replay
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-EXPOSE 7331
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+COPY src/ src/
 
-ENTRYPOINT ["claude-replay", "--host", "0.0.0.0"]
+RUN uv pip install --system --no-cache .
+
+EXPOSE 4000
+
+ENTRYPOINT ["ai-replay"]
+CMD ["--help"]

@@ -243,6 +243,12 @@ def main() -> None:
     help="Port for --serve.",
 )
 @click.option(
+    "--host",
+    default="127.0.0.1",
+    show_default=True,
+    help="Host to bind for --serve.",
+)
+@click.option(
     "--turns",
     default=None,
     metavar="TEXT",
@@ -264,6 +270,7 @@ def generate(
     no_compress: bool,
     serve: bool,
     port: int,
+    host: str,
     turns: Optional[str],
     exclude: Optional[str],
 ) -> None:
@@ -296,7 +303,7 @@ def generate(
         raise click.ClickException(str(exc))
 
     if serve:
-        _serve_html(html, port=port, open_browser=open_browser)
+        _serve_html(html, host=host, port=port, open_browser=open_browser)
         return
 
     if output:
@@ -314,7 +321,7 @@ def generate(
         sys.stdout.write(html)
 
 
-def _serve_html(html: str, *, port: int, open_browser: bool) -> None:
+def _serve_html(html: str, *, host: str = "127.0.0.1", port: int, open_browser: bool) -> None:
     """Serve an HTML string on a local HTTP server."""
     html_bytes = html.encode("utf-8")
 
@@ -329,12 +336,12 @@ def _serve_html(html: str, *, port: int, open_browser: bool) -> None:
         def log_message(self, format: str, *args: object) -> None:  # noqa: A002
             pass  # Silence request logs
 
-    url = f"http://127.0.0.1:{port}"
+    url = f"http://{host}:{port}"
     click.echo(f"Serving replay at {url}", err=True)
     if open_browser:
         webbrowser.open(url)
 
-    with http.server.HTTPServer(("127.0.0.1", port), _Handler) as server:
+    with http.server.HTTPServer((host, port), _Handler) as server:
         try:
             server.serve_forever()
         except KeyboardInterrupt:
