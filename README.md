@@ -4,6 +4,8 @@ Convert Claude Code, Cursor, and Codex CLI session transcripts to interactive HT
 
 > Python port of [claude-replay](https://github.com/es617/claude-replay) by es617 (original JavaScript version).
 
+Inspired by [claude-code-transcripts](https://github.com/simonw/claude-code-transcripts) by [Simon Willison](https://simonwillison.net/) — the interactive session picker, `--gist` publishing flow, and output folder naming convention (`<agent>-<sessionID>/index.html`) are all modelled after his work.
+
 ## Installation
 
 ```bash
