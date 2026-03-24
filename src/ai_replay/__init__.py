@@ -18,7 +18,7 @@ from .parser import parse_session, detect_format
 from .renderer import render_html
 from .resolve_session import resolve_session_path
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 VALID_THEMES = ["tokyo-night", "monokai", "solarized-dark", "github-light", "dracula", "bubbles"]
 
