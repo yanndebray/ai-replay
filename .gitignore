@@ -3,3 +3,10 @@ node_modules/
 template/player.min.html
 .DS_Store
 test-results/
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+dist/
+*.egg-info/
