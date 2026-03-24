@@ -8,6 +8,7 @@ requires-python = ">=3.10"
 dependencies = [
     "click",
     "click-default-group",
+    "questionary",
 ]
 
 [project.scripts]
