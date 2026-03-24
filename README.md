@@ -71,7 +71,9 @@ cd ai-replay
 # Check out the feature branch
 git checkout feat/interactive-tui-picker
 
-# Install in editable mode with all dependencies
+# Create a virtual environment and install in editable mode
+uv venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 uv pip install -e .
 
 # Verify
@@ -85,6 +87,8 @@ git clone https://github.com/jeanclawd/ai-replay.git
 cd ai-replay
 git checkout feat/interactive-tui-picker
 
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e .
 
 # Verify
@@ -94,12 +98,12 @@ ai-replay --version
 ### Run the tests
 
 ```bash
-# With uv
-uv run pytest
-
-# With pip / standard Python
-pip install pytest
+# With uv (inside the activated venv)
+uv pip install pytest
 pytest
+
+# Or without activating:
+uv run pytest
 ```
 
 Expected output:
