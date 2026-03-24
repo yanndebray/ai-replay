@@ -14,7 +14,7 @@ jobs:
       HAS_CURSOR: ${{ secrets.CURSOR_API_KEY != '' }}
     steps:
       - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
       - run: uv pip install --system .
       - run: mkdir -p /tmp/test-project
 
@@ -128,7 +128,7 @@ jobs:
 
       - name: Upload artifacts
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: format-check-sessions
           path: /tmp/format-artifacts/
