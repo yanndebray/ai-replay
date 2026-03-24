@@ -1,6 +1,6 @@
 [project]
 name = "ai-replay"
-version = "0.2.0"
+version = "0.2.1"
 description = "Convert Claude Code, Cursor, and Codex CLI session transcripts to interactive HTML replays"
 readme = "README.md"
 license = "MIT"

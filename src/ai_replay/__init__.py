@@ -19,7 +19,7 @@ from .renderer import render_html
 from .resolve_session import resolve_session_path
 from .discover import discover_sessions
 
-__version__ = "0.1.2"
+__version__ = "0.2.1"
 
 VALID_THEMES = ["tokyo-night", "monokai", "solarized-dark", "github-light", "dracula", "bubbles"]
 
