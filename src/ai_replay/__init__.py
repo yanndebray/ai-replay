@@ -201,7 +201,7 @@ def main() -> None:
 @click.option("--limit", default=20, show_default=True, help="Number of recent sessions to show.")
 @click.option("--agent", default=None, help="Filter by agent name (partial match, case-insensitive).")
 def pick(limit: int, agent: Optional[str]) -> None:
-    """Interactively pick a recent session and open it as a replay in your browser."""
+    """Interactively pick a recent session and save it as <agent>-<sessionID>/index.html in the current directory."""
     try:
         import questionary
     except ImportError:
@@ -227,7 +227,7 @@ def pick(limit: int, agent: Optional[str]) -> None:
         date_str = datetime.fromtimestamp(s.mtime).strftime("%Y-%m-%d %H:%M")
         size_kb = s.size_bytes / 1024
         label = f"{s.agent:<12} {date_str}  {size_kb:>6.0f} KB  {s.summary}"
-        choices.append(questionary.Choice(title=label, value=s.path))
+        choices.append(questionary.Choice(title=label, value=s))
 
     try:
         selected = questionary.select("Select a session to replay:", choices=choices).ask()
@@ -237,9 +237,21 @@ def pick(limit: int, agent: Optional[str]) -> None:
     if selected is None:
         return
 
+    # Build output folder in cwd: <agent>-<sessionID>/index.html
+    # e.g. claude-abc123def/ or codex-rollout-2026-03-24T10-00-00-xyz/
+    agent_prefix = selected.agent.lower().split()[0]  # "claude", "codex", "cursor", "github"
+    if agent_prefix == "github":
+        agent_prefix = "copilot"
+    session_id = selected.path.stem
+    out_dir = Path.cwd() / f"{agent_prefix}-{session_id}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_file = out_dir / "index.html"
+
+    click.echo(f"Output: {out_dir}/", err=True)
+
     # Generate HTML and open in browser
     ctx = click.get_current_context()
-    ctx.invoke(generate, input=(str(selected),), open_browser=True)
+    ctx.invoke(generate, input=(str(selected.path),), output=str(out_file), open_browser=True)
 
 
 @main.command(name="generate")

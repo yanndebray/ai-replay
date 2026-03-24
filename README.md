@@ -141,7 +141,16 @@ Loading sessions...
   Cursor        2026-03-22 09:55    210 KB  Initial project scaffold
 ```
 
-Select a session and it will generate the HTML replay and open it in your browser.
+Select a session and it will:
+1. Create `<agent>-<sessionID>/` in your **current working directory**
+2. Write the replay as `index.html` inside that folder
+3. Open it in your browser
+
+```
+Output: ./claude-abc123def456/
+```
+
+The folder naming mirrors `claude-code-transcripts` — `claude-` for Claude Code, `codex-` for Codex, `cursor-` for Cursor.
 
 ### Project structure
 
