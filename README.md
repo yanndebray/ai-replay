@@ -2,6 +2,8 @@
 
 Convert Claude Code, Cursor, and Codex CLI session transcripts to interactive HTML replays.
 
+> Python port of [claude-replay](https://github.com/es617/claude-replay) by es617 (original JavaScript version).
+
 ## Installation
 
 ```bash
