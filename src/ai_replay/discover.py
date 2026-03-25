@@ -20,11 +20,12 @@ class SessionInfo:
     summary: str = ""
 
 
-def _read_summary(path: Path, max_bytes: int = 4096) -> str:
+def _read_summary(path: Path, max_lines: int = 30) -> str:
     """Read the first user message content from a JSONL file as a summary."""
     try:
-        raw = path.read_bytes()[:max_bytes].decode("utf-8", errors="ignore")
-        for line in raw.splitlines():
+        with path.open(encoding="utf-8", errors="ignore") as fh:
+            lines = [fh.readline() for _ in range(max_lines)]
+        for line in lines:
             line = line.strip()
             if not line:
                 continue
