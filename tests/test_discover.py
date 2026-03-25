@@ -14,6 +14,11 @@ def _write_jsonl(path: Path, obj: dict) -> None:
     path.write_text(json.dumps(obj) + "\n", encoding="utf-8")
 
 
+def _write_jsonl_lines(path: Path, objs: list) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(json.dumps(o) for o in objs) + "\n", encoding="utf-8")
+
+
 def test_discover_claude_and_codex(tmp_path):
     """Both Claude Code and Codex sessions are discovered and sorted by mtime."""
     # Claude Code session
@@ -74,6 +79,31 @@ def test_discover_summary_extraction(tmp_path):
     results = discover_sessions(home=tmp_path)
     assert len(results) == 1
     assert "Fix the authentication bug" in results[0].summary
+
+
+def test_discover_codex_summary_extraction(tmp_path):
+    """Summary is extracted from Codex event_msg / user_message lines."""
+    f = (
+        tmp_path / ".codex" / "sessions" / "2026" / "03" / "25"
+        / "rollout-2026-03-25T12-00-00-abc.jsonl"
+    )
+    _write_jsonl_lines(f, [
+        {"type": "session_meta", "session_id": "abc"},
+        {"type": "event_msg", "payload": {"type": "task_started"}, "timestamp": "2026-03-25T12:00:00Z"},
+        {
+            "type": "event_msg",
+            "payload": {
+                "type": "user_message",
+                "message": "## My request for Codex:\nFix the authentication bug",
+            },
+            "timestamp": "2026-03-25T12:00:01Z",
+        },
+    ])
+
+    results = discover_sessions(home=tmp_path)
+    assert len(results) == 1
+    assert "Fix the authentication bug" in results[0].summary
+    assert "My request for Codex" not in results[0].summary
 
 
 def test_discover_no_sessions(tmp_path):

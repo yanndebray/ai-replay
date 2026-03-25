@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2
+
+- Fix: Codex sessions showing `(no summary)` in the session picker
+
 ## 0.2.1
 
 - Fix: sync `__version__` in `__init__.py` with `pyproject.toml` so `ai-replay --version` reports the correct version

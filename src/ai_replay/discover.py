@@ -32,6 +32,21 @@ def _read_summary(path: Path, max_bytes: int = 4096) -> str:
                 obj = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            # Codex format: {"type": "event_msg", "payload": {"type": "user_message", "message": "..."}}
+            if obj.get("type") == "event_msg":
+                payload = obj.get("payload") or {}
+                if payload.get("type") == "user_message":
+                    msg = payload.get("message", "").strip()
+                    # Strip "## My request for Codex:" prefix if present
+                    for marker in ("## My request for Codex:", "My request for Codex:"):
+                        idx = msg.find(marker)
+                        if idx != -1:
+                            msg = msg[idx + len(marker):].strip()
+                            break
+                    if msg:
+                        return msg[:60]
+                continue
+
             # Claude Code / generic format
             msg = obj.get("message", {})
             content = msg.get("content") if isinstance(msg, dict) else None
