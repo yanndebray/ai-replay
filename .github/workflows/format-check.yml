@@ -1,8 +1,6 @@
 name: Format Compatibility Check
 
 on:
-  schedule:
-    - cron: "0 6 */2 * *" # Every 2 days at 6am UTC
   workflow_dispatch: # Manual trigger
 
 jobs:
