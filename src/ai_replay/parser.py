@@ -123,13 +123,43 @@ def _is_tool_result_only(content: str | list) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _is_opencode_export(obj: Any) -> bool:
+    """Return True if *obj* is an OpenCode ``opencode export`` JSON object.
+
+    The export is a single JSON object of the shape
+    ``{"info": {...}, "messages": [{"info": {"role": ...}, "parts": [...]}, ...]}``.
+    """
+    if not isinstance(obj, dict):
+        return False
+    if not isinstance(obj.get("info"), dict):
+        return False
+    messages = obj.get("messages")
+    if not isinstance(messages, list):
+        return False
+    for msg in messages:
+        if isinstance(msg, dict) and isinstance(msg.get("info"), dict):
+            if msg["info"].get("role") in ("user", "assistant"):
+                return True
+    # Empty messages list with a session info block still counts as OpenCode.
+    return messages == [] and "id" in obj["info"]
+
+
 def _detect_format_from_text(text: str) -> str:
     """
     Detect transcript format by peeking at the first parseable JSON line.
 
-    Returns one of: ``"claude"``, ``"cursor"``, ``"codex"``, ``"replay"``,
-    or ``"unknown"``.
+    Returns one of: ``"claude"``, ``"cursor"``, ``"codex"``, ``"opencode"``,
+    ``"replay"``, or ``"unknown"``.
     """
+    # OpenCode export is a single (often pretty-printed) JSON object, so it must
+    # be detected from the whole text before the line-by-line JSONL scan.
+    try:
+        whole = json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        whole = None
+    if _is_opencode_export(whole):
+        return "opencode"
+
     for line in text.split("\n"):
         trimmed = line.strip()
         if not trimmed:
@@ -152,8 +182,8 @@ def _detect_format_from_text(text: str) -> str:
 def detect_format(file_path: Path | str) -> str:
     """Detect the session format of a JSONL file.
 
-    Returns one of: ``"claude"``, ``"cursor"``, ``"codex"``, ``"replay"``,
-    or ``"unknown"``.
+    Returns one of: ``"claude"``, ``"cursor"``, ``"codex"``, ``"opencode"``,
+    ``"replay"``, or ``"unknown"``.
     """
     text = Path(file_path).read_text(encoding="utf-8")
     return _detect_format_from_text(text)
@@ -740,6 +770,187 @@ def _parse_codex_format(events: list[dict]) -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
+# OpenCode format parser
+# ---------------------------------------------------------------------------
+
+
+# OpenCode uses lowercase tool names; the player template renders rich previews
+# and diffs only for Claude-Code-style TitleCase names, so we map them here.
+_OPENCODE_TOOL_MAP = {
+    "bash": "Bash",
+    "read": "Read",
+    "write": "Write",
+    "edit": "Edit",
+    "patch": "Edit",
+    "glob": "Glob",
+    "grep": "Grep",
+    "ls": "Glob",
+    "list": "Glob",
+    "webfetch": "WebFetch",
+    "websearch": "WebSearch",
+    "codesearch": "Grep",
+    "task": "Task",
+    "todo": "TodoWrite",
+    "todowrite": "TodoWrite",
+    "question": "Question",
+    "skill": "Skill",
+}
+
+
+def _ms_to_iso(ms: int | float | None) -> str | None:
+    """Convert epoch milliseconds to an ISO-8601 UTC string (or ``None``)."""
+    if ms is None:
+        return None
+    try:
+        dt = datetime.fromtimestamp(float(ms) / 1000.0, tz=timezone.utc)
+    except (ValueError, OSError, OverflowError):
+        return None
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
+
+
+def _normalize_opencode_tool_input(name: str, inp: dict[str, Any]) -> dict[str, Any]:
+    """Map OpenCode tool input keys to the Claude-Code-style keys the player expects."""
+    if not isinstance(inp, dict):
+        return {"raw": inp}
+    if name == "Bash" and inp.get("command"):
+        command = inp["command"]
+        if inp.get("workdir"):
+            command = f"cd {inp['workdir']} && {command}"
+        return {"command": command}
+    if name == "Write" and inp.get("filePath"):
+        return {"file_path": inp["filePath"], "content": inp.get("content") or ""}
+    if name == "Read" and inp.get("filePath"):
+        return {"file_path": inp["filePath"]}
+    if name == "Edit" and inp.get("filePath"):
+        normalized = dict(inp)
+        normalized["file_path"] = inp["filePath"]
+        return normalized
+    return inp
+
+
+def _parse_opencode_format(export: dict[str, Any]) -> list[dict[str, Any]]:
+    """Parse an ``opencode export`` JSON object into turn dicts.
+
+    The export shape is::
+
+        {"info": {...}, "messages": [{"info": {"role": ...}, "parts": [...]}, ...]}
+
+    A ``user`` message starts a new turn; subsequent ``assistant`` messages
+    contribute ``text`` / ``thinking`` / ``tool_use`` blocks to that turn.
+    ``step-start`` / ``step-finish`` parts are ignored.
+    """
+    messages = export.get("messages") or []
+
+    turns: list[dict[str, Any]] = []
+    turn_index = 0
+    current_user_text = ""
+    current_timestamp = ""
+    current_blocks: list[dict[str, Any]] = []
+    in_turn = False
+
+    def _finalize() -> None:
+        nonlocal turn_index, current_user_text, current_timestamp, current_blocks, in_turn
+        if not in_turn:
+            return
+        if current_user_text or current_blocks:
+            turn_index += 1
+            turns.append(
+                _make_turn(
+                    turn_index, current_user_text, current_blocks, current_timestamp
+                )
+            )
+        current_user_text = ""
+        current_timestamp = ""
+        current_blocks = []
+        in_turn = False
+
+    for msg in messages:
+        if not isinstance(msg, dict):
+            continue
+        info = msg.get("info") or {}
+        role = info.get("role")
+        msg_ts = _ms_to_iso((info.get("time") or {}).get("created"))
+        parts = msg.get("parts") or []
+
+        if role == "user":
+            # A new user message closes the previous turn and opens a new one.
+            _finalize()
+            in_turn = True
+            current_timestamp = msg_ts or ""
+            text_parts = [
+                (p.get("text") or "").strip()
+                for p in parts
+                if isinstance(p, dict)
+                and p.get("type") == "text"
+                and (p.get("text") or "").strip()
+            ]
+            current_user_text = "\n".join(text_parts)
+            continue
+
+        if role == "assistant":
+            if not in_turn:
+                # Assistant message with no preceding user message: open a turn.
+                in_turn = True
+                current_timestamp = msg_ts or ""
+            for p in parts:
+                if not isinstance(p, dict):
+                    continue
+                ptype = p.get("type")
+
+                if ptype == "text":
+                    text = (p.get("text") or "").strip()
+                    if text:
+                        current_blocks.append(_make_block("text", text=text, timestamp=msg_ts))
+
+                elif ptype == "reasoning":
+                    text = (p.get("text") or "").strip()
+                    if text:
+                        current_blocks.append(
+                            _make_block("thinking", text=text, timestamp=msg_ts)
+                        )
+
+                elif ptype == "tool":
+                    raw_name = p.get("tool") or "unknown"
+                    name = _OPENCODE_TOOL_MAP.get(raw_name, raw_name[:1].upper() + raw_name[1:])
+                    state = p.get("state") or {}
+                    inp = _normalize_opencode_tool_input(name, state.get("input") or {})
+                    output = state.get("output")
+                    if isinstance(output, str):
+                        result = output
+                    elif output is None:
+                        result = None
+                    else:
+                        result = json.dumps(output)
+                    status = state.get("status")
+                    metadata = state.get("metadata") or {}
+                    is_error = status == "error" or (
+                        metadata.get("exit") is not None and metadata.get("exit") != 0
+                    )
+                    result_ts = _ms_to_iso((state.get("time") or {}).get("end"))
+                    tc = _make_tool_call(
+                        tool_use_id=p.get("callID") or "",
+                        name=name,
+                        inp=inp,
+                        result=result,
+                        result_timestamp=result_ts,
+                        is_error=bool(is_error),
+                    )
+                    current_blocks.append(
+                        _make_block("tool_use", tool_call=tc, timestamp=msg_ts)
+                    )
+                # step-start / step-finish and unknown parts are ignored.
+            continue
+
+        # Other roles (system, etc.) are ignored.
+
+    _finalize()
+
+    for j, t in enumerate(turns):
+        t["index"] = j + 1
+    return turns
+
+
+# ---------------------------------------------------------------------------
 # Replay format parser
 # ---------------------------------------------------------------------------
 
@@ -899,7 +1110,7 @@ def parse_session(
     """
     Parse a JSONL transcript file and return a list of turn dicts.
 
-    The format (Claude Code, Cursor, Codex, or Replay) is detected
+    The format (Claude Code, Cursor, Codex, OpenCode, or Replay) is detected
     automatically.  When *paced_timing* is ``True`` the timestamps are replaced
     with synthetic timing based on content length.
 
@@ -918,6 +1129,18 @@ def parse_session(
     """
     text = Path(file_path).read_text(encoding="utf-8")
     fmt = _detect_format_from_text(text)
+
+    # OpenCode export is a single JSON object, parsed separately from the
+    # line-by-line JSONL formats.
+    if fmt == "opencode":
+        try:
+            export = json.loads(text)
+        except (json.JSONDecodeError, ValueError):
+            export = {}
+        turns = _parse_opencode_format(export if isinstance(export, dict) else {})
+        if paced_timing:
+            apply_paced_timing(turns)
+        return turns
 
     # Parse all JSON lines up-front
     parsed_lines: list[dict] = []

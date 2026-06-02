@@ -1,0 +1,96 @@
+{
+  "info": {
+    "id": "ses_testopencode01",
+    "slug": "test-session",
+    "directory": "/Users/me/Devel/my-project",
+    "title": "Test OpenCode session",
+    "time": { "created": 1780429529456, "updated": 1780430127101 }
+  },
+  "messages": [
+    {
+      "info": {
+        "role": "user",
+        "id": "msg_user1",
+        "sessionID": "ses_testopencode01",
+        "time": { "created": 1780429529475 }
+      },
+      "parts": [
+        { "type": "text", "text": "add a hello function", "id": "prt_u1" }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "id": "msg_asst1",
+        "sessionID": "ses_testopencode01",
+        "time": { "created": 1780429534000 }
+      },
+      "parts": [
+        { "type": "step-start", "id": "prt_ss1" },
+        { "type": "reasoning", "text": "I should write the function.", "id": "prt_r1" },
+        { "type": "text", "text": "I'll create the file.", "id": "prt_t1" },
+        {
+          "type": "tool",
+          "tool": "write",
+          "callID": "call_write_1",
+          "state": {
+            "status": "completed",
+            "input": { "filePath": "/Users/me/Devel/my-project/hello.py", "content": "def hello():\n    return 'hi'\n" },
+            "output": "File written",
+            "metadata": { "exit": 0 },
+            "time": { "start": 1780429534058, "end": 1780429534200 }
+          },
+          "id": "prt_tool1"
+        },
+        {
+          "type": "tool",
+          "tool": "edit",
+          "callID": "call_edit_1",
+          "state": {
+            "status": "completed",
+            "input": { "filePath": "/Users/me/Devel/my-project/hello.py", "old_string": "return 'hi'", "new_string": "return 'hello'" },
+            "output": "Edited",
+            "time": { "start": 1780429534300, "end": 1780429534400 }
+          },
+          "id": "prt_tool2"
+        },
+        {
+          "type": "tool",
+          "tool": "bash",
+          "callID": "call_bash_1",
+          "state": {
+            "status": "error",
+            "input": { "command": "pytest", "workdir": "/Users/me/Devel/my-project" },
+            "output": "1 failed",
+            "metadata": { "exit": 1 },
+            "time": { "start": 1780429534500, "end": 1780429534600 }
+          },
+          "id": "prt_tool3"
+        },
+        { "type": "step-finish", "id": "prt_sf1" }
+      ]
+    },
+    {
+      "info": {
+        "role": "user",
+        "id": "msg_user2",
+        "sessionID": "ses_testopencode01",
+        "time": { "created": 1780429540000 }
+      },
+      "parts": [
+        { "type": "text", "text": "thanks", "id": "prt_u2" }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "id": "msg_asst2",
+        "sessionID": "ses_testopencode01",
+        "time": { "created": 1780429541000 }
+      },
+      "parts": [
+        { "type": "text", "text": "You're welcome!", "id": "prt_t2" }
+      ]
+    }
+  ]
+}
