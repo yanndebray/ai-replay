@@ -1,5 +1,5 @@
 """
-ai-replay: Convert Claude Code, Cursor, and Codex CLI session transcripts
+ai-replay: Convert Claude Code, Cursor, Codex CLI, and OpenCode session transcripts
 to interactive HTML replays.
 """
 
@@ -19,7 +19,7 @@ from .renderer import render_html
 from .resolve_session import resolve_session_path
 from .discover import discover_sessions
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"
 
 VALID_THEMES = ["tokyo-night", "monokai", "solarized-dark", "github-light", "dracula", "bubbles"]
 
@@ -157,6 +157,7 @@ def _build_replay(
 
     assistant_label = (
         "Codex" if fmt == "codex"
+        else "OpenCode" if fmt == "opencode"
         else "Assistant" if fmt == "cursor"
         else "Claude"
     )
@@ -185,7 +186,7 @@ def _build_replay(
 @click.group(cls=DefaultGroup, default="pick", default_if_no_args=True)
 @click.version_option(__version__, "-v", "--version")
 def main() -> None:
-    """Convert Claude Code, Cursor, and Codex CLI session transcripts to
+    """Convert Claude Code, Cursor, Codex CLI, and OpenCode session transcripts to
     interactive HTML replays.
 
     \b
@@ -194,6 +195,11 @@ def main() -> None:
       ai-replay session.jsonl -o replay.html
       ai-replay <session-id> -o replay.html
       ai-replay extract replay.html
+
+    \b
+    OpenCode sessions live in a SQLite DB; export them to JSON first:
+      opencode export <sessionID> > session.json
+      ai-replay session.json -o replay.html
     """
 
 

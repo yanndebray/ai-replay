@@ -19,14 +19,16 @@ uv build
 
 ## Architecture
 
-`ai-replay` is a Python CLI that converts AI agent session transcripts (JSONL files) into interactive HTML replays. It supports Claude Code, Cursor, and Codex CLI session formats.
+`ai-replay` is a Python CLI that converts AI agent session transcripts (JSONL files) into interactive HTML replays. It supports Claude Code, Cursor, Codex CLI, and OpenCode session formats.
 
 **Data flow:**
 1. `discover.py` — scans `~/.claude/projects/`, `~/.cursor/projects/`, `~/.codex/sessions/` → `SessionInfo` list
-2. `parser.py` — reads JSONL → structured turn dicts (with `blocks`, `tool_use`, timestamps); handles 3 format variants via `detect_format()`
+2. `parser.py` — reads JSONL → structured turn dicts (with `blocks`, `tool_use`, timestamps); handles format variants via `detect_format()`
 3. `secrets.py` — optional regex-based secret redaction applied to turn data
 4. `renderer.py` — embeds turns (zlib-compressed + base64) into `templates/player.html` → self-contained HTML
 5. `extract.py` — reverse: parses the embedded blob from HTML back to JSONL
+
+**OpenCode:** stores sessions in a SQLite DB, not on-disk JSONL. ai-replay does *not* read the DB directly — instead the user exports a session with `opencode export <sessionID> > session.json` (a single JSON object `{info, messages:[{info:{role}, parts:[...]}]}`), which is auto-detected as the `"opencode"` format. OpenCode's lowercase tool names (`bash`, `read`, `write`, `edit`, …) are mapped to Claude-Code-style TitleCase names so the player renders the same previews/diffs.
 
 **CLI (`__init__.py`)** uses `click-default-group` with `pick` as the default command:
 - `pick` — interactive TUI session selector (via `questionary`)

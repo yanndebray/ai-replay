@@ -1,6 +1,6 @@
 # ai-replay
 
-Convert Claude Code, Cursor, and Codex CLI session transcripts to interactive HTML replays.
+Convert Claude Code, Cursor, Codex CLI, and OpenCode session transcripts to interactive HTML replays.
 
 > Python port of [claude-replay](https://github.com/es617/claude-replay) by es617 (original JavaScript version).
 
@@ -30,6 +30,21 @@ ai-replay extract replay.html
 # Serve replay on local HTTP server
 ai-replay session.jsonl --serve --port 4000
 ```
+
+### OpenCode
+
+OpenCode stores sessions in a SQLite database rather than on-disk JSONL files,
+so export a session to JSON first and pass the file to `ai-replay` (the format
+is auto-detected):
+
+```bash
+opencode export <sessionID> > session.json
+ai-replay session.json -o replay.html
+```
+
+OpenCode's lowercase tool names (`bash`, `read`, `write`, `edit`, …) are mapped
+to their Claude Code equivalents so they render with the same diff views and
+command previews. Reasoning blocks render as thinking blocks.
 
 ### Interactive picker options
 
