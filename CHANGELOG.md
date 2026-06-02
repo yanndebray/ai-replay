@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- Add OpenCode session support: export a session with `opencode export <sessionID> > session.json` and pass it to `ai-replay` (auto-detected as the `opencode` format)
+- Map OpenCode's lowercase tool names (`bash`, `read`, `write`, `edit`, …) to Claude-Code-style TitleCase so tool calls render with the same previews and diffs
+- Render OpenCode reasoning blocks as thinking blocks
+
 ## 0.2.2
 
 - Fix: Codex sessions showing `(no summary)` in the session picker
