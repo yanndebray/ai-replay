@@ -183,9 +183,15 @@ def _build_replay(
 # CLI definition
 # ---------------------------------------------------------------------------
 
-@click.group(cls=DefaultGroup, default="pick", default_if_no_args=True)
+@click.group(
+    cls=DefaultGroup,
+    default="generate",
+    default_if_no_args=False,
+    invoke_without_command=True,
+)
 @click.version_option(__version__, "-v", "--version")
-def main() -> None:
+@click.pass_context
+def main(ctx: click.Context) -> None:
     """Convert Claude Code, Cursor, Codex CLI, and OpenCode session transcripts to
     interactive HTML replays.
 
@@ -201,6 +207,9 @@ def main() -> None:
       opencode export <sessionID> > session.json
       ai-replay session.json -o replay.html
     """
+    # No args: fall back to the interactive picker.
+    if ctx.invoked_subcommand is None:
+        ctx.invoke(pick, limit=20, agent=None)
 
 
 @main.command(name="pick")
