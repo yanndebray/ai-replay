@@ -21,7 +21,7 @@ from .discover import discover_sessions
 
 __version__ = "0.3.0"
 
-VALID_THEMES = ["midnight-ember", "tokyo-night", "monokai", "solarized-dark", "github-light", "dracula", "bubbles"]
+VALID_THEMES = ["dark-knight", "tokyo-night", "monokai", "solarized-dark", "github-light", "dracula", "bubbles"]
 
 
 # ---------------------------------------------------------------------------
@@ -281,7 +281,7 @@ def pick(limit: int, agent: Optional[str]) -> None:
 @click.option(
     "--theme",
     type=click.Choice(VALID_THEMES),
-    default="midnight-ember",
+    default="dark-knight",
     show_default=True,
     help="Color theme.",
 )

@@ -60,7 +60,7 @@ ai-replay pick --agent codex    # filter to one agent (partial match)
 
 - `-o, --output FILE`: Output HTML file (default: stdout)
 - `--title TEXT`: Custom page title
-- `--theme NAME`: Color theme (default: midnight-ember)
+- `--theme NAME`: Color theme (default: dark-knight)
 - `--no-redact`: Disable automatic secret redaction
 - `--open`: Open in browser after generating
 - `--no-compress`: Embed raw JSON instead of compressed
