@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ai-replay — interactive HTML replays of AI agent sessions</title>
+<meta name="description" content="Convert Claude Code, Cursor, Codex CLI, and OpenCode session transcripts into self-contained, interactive HTML replays." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%230a1628'/%3E%3Cpath d='M38 30 L66 50 L38 70 Z' fill='%23ff7900'/%3E%3C/svg%3E" />
+<style>
+  :root {
+    --bg: #0a1628;
+    --bg-surface: #0f2138;
+    --bg-hover: #17314e;
+    --text: #c5d4e8;
+    --text-dim: #5b7290;
+    --text-bright: #eaf2fb;
+    --accent: #ff7900;
+    --accent-dim: #b35500;
+    --green: #4ade80;
+    --blue: #4d94ff;
+    --cyan: #38bdf8;
+    --border: #1d3a5c;
+    --tool-bg: #0c1d33;
+    --radius: 14px;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---- background glow ---- */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(900px 500px at 75% -10%, rgba(255,121,0,0.10), transparent 60%),
+      radial-gradient(700px 500px at 10% 0%, rgba(77,148,255,0.08), transparent 55%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  main, header, footer { position: relative; z-index: 1; }
+
+  /* ---- top nav ---- */
+  nav {
+    display: flex; align-items: center; gap: 20px;
+    padding: 18px 24px;
+    max-width: 1040px; margin: 0 auto;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--text-bright); font-size: 18px; }
+  .brand .play { color: var(--accent); }
+  nav .spacer { flex: 1; }
+  nav a { color: var(--text-dim); font-size: 14px; font-weight: 500; }
+  nav a:hover { color: var(--text-bright); text-decoration: none; }
+
+  /* ---- hero ---- */
+  header { padding: 56px 0 40px; text-align: center; }
+  .pill {
+    display: inline-block; font-size: 12.5px; letter-spacing: .04em;
+    color: var(--accent); background: rgba(255,121,0,0.08);
+    border: 1px solid rgba(255,121,0,0.25);
+    padding: 5px 13px; border-radius: 999px; margin-bottom: 22px; font-weight: 600;
+  }
+  h1 {
+    font-size: clamp(34px, 6vw, 56px); line-height: 1.08; margin: 0 0 18px;
+    color: var(--text-bright); font-weight: 800; letter-spacing: -0.02em;
+  }
+  h1 .grad {
+    background: linear-gradient(100deg, var(--accent), #ffb066);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .sub { font-size: clamp(16px, 2.4vw, 20px); color: var(--text-dim); max-width: 620px; margin: 0 auto 30px; }
+  .cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 22px; border-radius: 10px; font-weight: 600; font-size: 15px;
+    border: 1px solid var(--border); transition: transform .12s ease, background .12s ease;
+  }
+  .btn:hover { text-decoration: none; transform: translateY(-1px); }
+  .btn.primary { background: var(--accent); color: #1a0c00; border-color: var(--accent); }
+  .btn.primary:hover { background: #ff8c1a; }
+  .btn.ghost { background: var(--bg-surface); color: var(--text-bright); }
+  .btn.ghost:hover { background: var(--bg-hover); }
+
+  /* ---- install snippet ---- */
+  .install {
+    margin: 34px auto 0; max-width: 460px;
+    background: var(--tool-bg); border: 1px solid var(--border); border-radius: 10px;
+    font-family: var(--mono); font-size: 14.5px; color: var(--text-bright);
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 13px 16px; text-align: left;
+  }
+  .install code { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .install .dollar { color: var(--accent); user-select: none; }
+  .copy {
+    background: var(--bg-hover); color: var(--text); border: 1px solid var(--border);
+    border-radius: 7px; padding: 5px 11px; font-size: 12.5px; cursor: pointer; font-family: var(--sans);
+    transition: background .12s ease; flex-shrink: 0;
+  }
+  .copy:hover { background: var(--accent); color: #1a0c00; border-color: var(--accent); }
+
+  /* ---- sections ---- */
+  section { padding: 52px 0; }
+  .section-head { text-align: center; margin-bottom: 40px; }
+  .section-head h2 { font-size: clamp(26px, 4vw, 34px); margin: 0 0 10px; color: var(--text-bright); letter-spacing: -0.01em; }
+  .section-head p { color: var(--text-dim); margin: 0; font-size: 16px; }
+
+  /* ---- features ---- */
+  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; }
+  .feature {
+    background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 22px 20px;
+  }
+  .feature .ico { font-size: 22px; margin-bottom: 12px; }
+  .feature h3 { margin: 0 0 6px; font-size: 16.5px; color: var(--text-bright); }
+  .feature p { margin: 0; font-size: 14px; color: var(--text-dim); }
+
+  /* ---- gallery ---- */
+  .gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+  .card {
+    display: flex; flex-direction: column;
+    background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius);
+    overflow: hidden; transition: transform .14s ease, border-color .14s ease, box-shadow .14s ease;
+  }
+  .card:hover { transform: translateY(-3px); border-color: var(--accent-dim); box-shadow: 0 12px 30px rgba(0,0,0,0.35); text-decoration: none; }
+  .card .thumb {
+    height: 130px; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, var(--tool-bg), var(--bg-hover));
+    border-bottom: 1px solid var(--border); position: relative;
+  }
+  .card .thumb .glyph {
+    width: 54px; height: 54px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; background: rgba(255,121,0,0.12); border: 1px solid rgba(255,121,0,0.3);
+  }
+  .card .body { padding: 18px 20px 20px; display: flex; flex-direction: column; flex: 1; }
+  .card .agent {
+    font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 9px;
+  }
+  .card h3 { margin: 0 0 8px; font-size: 17px; color: var(--text-bright); line-height: 1.35; }
+  .card p { margin: 0 0 16px; font-size: 13.5px; color: var(--text-dim); flex: 1; }
+  .card .meta { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tag {
+    font-size: 11.5px; font-family: var(--mono); color: var(--text);
+    background: var(--tool-bg); border: 1px solid var(--border);
+    padding: 3px 9px; border-radius: 999px;
+  }
+  .card .open { margin-top: 16px; font-size: 14px; font-weight: 600; color: var(--accent); }
+
+  /* ---- footer ---- */
+  footer { border-top: 1px solid var(--border); padding: 32px 0 48px; text-align: center; color: var(--text-dim); font-size: 14px; }
+  footer a { color: var(--text); }
+  footer .credits { margin-top: 10px; font-size: 13px; }
+
+  @media (max-width: 560px) {
+    nav { gap: 14px; }
+    nav a.hide-sm { display: none; }
+  }
+</style>
+</head>
+<body>
+  <nav>
+    <span class="brand"><span class="play">▶</span> ai-replay</span>
+    <span class="spacer"></span>
+    <a href="#demos">Demos</a>
+    <a href="#features" class="hide-sm">Features</a>
+    <a href="https://github.com/yanndebray/ai-replay">GitHub</a>
+    <a href="https://pypi.org/project/ai-replay/" class="hide-sm">PyPI</a>
+  </nav>
+
+  <header>
+    <div class="wrap">
+      <span class="pill">Claude Code · Cursor · Codex CLI · OpenCode</span>
+      <h1>Replay your <span class="grad">AI agent sessions</span><br>as interactive HTML</h1>
+      <p class="sub">
+        Turn a session transcript into a single self-contained HTML file you can
+        scrub through, share, and host anywhere — no server, no dependencies.
+      </p>
+      <div class="cta">
+        <a class="btn primary" href="#demos">▶ Watch a live demo</a>
+        <a class="btn ghost" href="https://github.com/yanndebray/ai-replay">View on GitHub</a>
+      </div>
+      <div class="install">
+        <span><span class="dollar">$ </span><code id="cmd">uv tool install ai-replay</code></span>
+        <button class="copy" onclick="copyCmd(this)">Copy</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section id="demos">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Live demos</h2>
+          <p>Real generated replays — click any card to open the full interactive player.</p>
+        </div>
+        <div class="gallery">
+
+          <a class="card" href="demos/replay_ses_176215e90ffeY55qHgZob6CqQd.html">
+            <div class="thumb"><div class="glyph">🛠️</div></div>
+            <div class="body">
+              <div class="agent">OpenCode</div>
+              <h3>Shipping a feature end-to-end</h3>
+              <p>A full session implementing OpenCode support (issue #6) — from first prompt through merging and tagging the v0.3.0 release.</p>
+              <div class="meta">
+                <span class="tag">10 turns</span>
+                <span class="tag">tools + diffs</span>
+              </div>
+              <span class="open">Open replay →</span>
+            </div>
+          </a>
+
+          <a class="card" href="demos/claude-11b02037-1306-4e15-b456-94e75ecee12f/index.html">
+            <div class="thumb"><div class="glyph">💬</div></div>
+            <div class="body">
+              <div class="agent">Claude Code</div>
+              <h3>A quick show-and-tell</h3>
+              <p>A short Claude Code exchange — handy for seeing how the player renders the Claude Code transcript format.</p>
+              <div class="meta">
+                <span class="tag">Claude Code format</span>
+              </div>
+              <span class="open">Open replay →</span>
+            </div>
+          </a>
+
+          <a class="card" href="demos/claude-37ed2e27-175b-4a55-a6de-6fb3418059d4/index.html">
+            <div class="thumb"><div class="glyph">👋</div></div>
+            <div class="body">
+              <div class="agent">Claude Code</div>
+              <h3>Minimal “hello” session</h3>
+              <p>The smallest possible replay — a single turn. Useful as a baseline for what a generated file looks like.</p>
+              <div class="meta">
+                <span class="tag">1 turn</span>
+              </div>
+              <span class="open">Open replay →</span>
+            </div>
+          </a>
+
+        </div>
+      </div>
+    </section>
+
+    <section id="features" style="background: rgba(15,33,56,0.4); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>What it does</h2>
+          <p>One CLI, four agent formats, zero runtime dependencies in the output.</p>
+        </div>
+        <div class="features">
+          <div class="feature">
+            <div class="ico">📦</div>
+            <h3>Self-contained output</h3>
+            <p>Every replay is a single HTML file with the transcript embedded (zlib + base64). Open it offline or host it anywhere.</p>
+          </div>
+          <div class="feature">
+            <div class="ico">🤖</div>
+            <h3>Four agent formats</h3>
+            <p>Reads Claude Code, Cursor, Codex CLI, and exported OpenCode sessions — auto-detecting the format for each file.</p>
+          </div>
+          <div class="feature">
+            <div class="ico">🔒</div>
+            <h3>Secret redaction</h3>
+            <p>Optional regex-based redaction strips API keys and tokens from the transcript before it gets embedded.</p>
+          </div>
+          <div class="feature">
+            <div class="ico">🔁</div>
+            <h3>Round-trips back</h3>
+            <p><code>ai-replay extract</code> pulls the original turns back out of any generated HTML as clean JSONL.</p>
+          </div>
+          <div class="feature">
+            <div class="ico">🎨</div>
+            <h3>Themeable player</h3>
+            <p>Ships with multiple color themes (dark-knight, tokyo-night, monokai, dracula, and more) injected as CSS variables.</p>
+          </div>
+          <div class="feature">
+            <div class="ico">⌨️</div>
+            <h3>Interactive picker</h3>
+            <p>Run <code>ai-replay</code> with no arguments for a TUI that discovers and lists your recent sessions across agents.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="quickstart">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Get started in seconds</h2>
+          <p>Install, point it at a session, open the result.</p>
+        </div>
+        <div class="install" style="max-width:560px;">
+          <span><span class="dollar">$ </span><code>ai-replay session.jsonl -o replay.html</code></span>
+          <button class="copy" onclick="copyText('ai-replay session.jsonl -o replay.html', this)">Copy</button>
+        </div>
+        <p style="text-align:center; color:var(--text-dim); margin-top:18px; font-size:14px;">
+          Or just run <code style="font-family:var(--mono);color:var(--text-bright)">ai-replay</code> to pick a recent session interactively.
+          See the <a href="https://github.com/yanndebray/ai-replay#readme">full README</a> for OpenCode export, redaction, and serving options.
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <p>
+        <a href="https://github.com/yanndebray/ai-replay">GitHub</a> ·
+        <a href="https://pypi.org/project/ai-replay/">PyPI</a> ·
+        MIT licensed
+      </p>
+      <p class="credits">
+        Python port of <a href="https://github.com/es617/claude-replay">claude-replay</a> by es617.
+        Inspired by <a href="https://github.com/simonw/claude-code-transcripts">claude-code-transcripts</a> by Simon Willison.
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    function flash(btn) {
+      const old = btn.textContent;
+      btn.textContent = "Copied ✓";
+      setTimeout(() => { btn.textContent = old; }, 1400);
+    }
+    function copyText(text, btn) {
+      navigator.clipboard.writeText(text).then(() => flash(btn));
+    }
+    function copyCmd(btn) {
+      copyText(document.getElementById("cmd").textContent, btn);
+    }
+  </script>
+</body>
+</html>
