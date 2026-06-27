@@ -182,7 +182,7 @@ def render_html(
         Page title shown in the browser tab and controls bar.
     theme:
         Theme dict with CSS variable definitions, or a built-in theme name
-        string. Defaults to "tokyo-night".
+        string. Defaults to "dark-knight".
     speed:
         Initial playback speed multiplier (clamped to 0.1–10).
     show_thinking:
@@ -220,7 +220,7 @@ def render_html(
     """
     # Resolve theme
     if theme is None:
-        theme_dict = get_theme("tokyo-night")
+        theme_dict = get_theme("dark-knight")
     elif isinstance(theme, str):
         theme_dict = get_theme(theme)
     else:

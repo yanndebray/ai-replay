@@ -2,6 +2,8 @@
 
 Convert Claude Code, Cursor, Codex CLI, and OpenCode session transcripts to interactive HTML replays.
 
+**▶️ [See a live demo](https://yanndebray.github.io/ai-replay/demos/replay_ses_176215e90ffeY55qHgZob6CqQd.html)** — preview what a generated replay looks like before you install anything.
+
 > Python port of [claude-replay](https://github.com/es617/claude-replay) by es617 (original JavaScript version).
 
 Inspired by [claude-code-transcripts](https://github.com/simonw/claude-code-transcripts) by [Simon Willison](https://simonwillison.net/) — the interactive session picker, `--gist` publishing flow, and output folder naming convention (`<agent>-<sessionID>/index.html`) are all modelled after his work.
@@ -58,7 +60,7 @@ ai-replay pick --agent codex    # filter to one agent (partial match)
 
 - `-o, --output FILE`: Output HTML file (default: stdout)
 - `--title TEXT`: Custom page title
-- `--theme NAME`: Color theme (default: tokyo-night)
+- `--theme NAME`: Color theme (default: dark-knight)
 - `--no-redact`: Disable automatic secret redaction
 - `--open`: Open in browser after generating
 - `--no-compress`: Embed raw JSON instead of compressed

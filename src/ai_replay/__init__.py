@@ -19,9 +19,9 @@ from .renderer import render_html
 from .resolve_session import resolve_session_path
 from .discover import discover_sessions
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
-VALID_THEMES = ["tokyo-night", "monokai", "solarized-dark", "github-light", "dracula", "bubbles"]
+VALID_THEMES = ["dark-knight", "tokyo-night", "monokai", "solarized-dark", "github-light", "dracula", "bubbles"]
 
 
 # ---------------------------------------------------------------------------
@@ -183,9 +183,15 @@ def _build_replay(
 # CLI definition
 # ---------------------------------------------------------------------------
 
-@click.group(cls=DefaultGroup, default="pick", default_if_no_args=True)
+@click.group(
+    cls=DefaultGroup,
+    default="generate",
+    default_if_no_args=False,
+    invoke_without_command=True,
+)
 @click.version_option(__version__, "-v", "--version")
-def main() -> None:
+@click.pass_context
+def main(ctx: click.Context) -> None:
     """Convert Claude Code, Cursor, Codex CLI, and OpenCode session transcripts to
     interactive HTML replays.
 
@@ -201,6 +207,9 @@ def main() -> None:
       opencode export <sessionID> > session.json
       ai-replay session.json -o replay.html
     """
+    # No args: fall back to the interactive picker.
+    if ctx.invoked_subcommand is None:
+        ctx.invoke(pick, limit=20, agent=None)
 
 
 @main.command(name="pick")
@@ -272,7 +281,7 @@ def pick(limit: int, agent: Optional[str]) -> None:
 @click.option(
     "--theme",
     type=click.Choice(VALID_THEMES),
-    default="tokyo-night",
+    default="dark-knight",
     show_default=True,
     help="Color theme.",
 )

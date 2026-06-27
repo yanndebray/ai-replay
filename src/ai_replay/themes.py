@@ -20,6 +20,25 @@ THEME_VARS = [
 ]
 
 THEMES: dict[str, dict[str, str]] = {
+    "dark-knight": {
+        # Deep navy blue with a warm ember-orange accent.
+        "bg": "#0a1628",
+        "bg-surface": "#0f2138",
+        "bg-hover": "#17314e",
+        "text": "#c5d4e8",
+        "text-dim": "#5b7290",
+        "text-bright": "#eaf2fb",
+        "accent": "#ff7900",
+        "accent-dim": "#b35500",
+        "green": "#4ade80",
+        "blue": "#4d94ff",
+        "orange": "#ff7900",
+        "red": "#f87171",
+        "cyan": "#38bdf8",
+        "border": "#1d3a5c",
+        "tool-bg": "#0c1d33",
+        "thinking-bg": "#0e2036",
+    },
     "tokyo-night": {
         "bg": "#1a1b26",
         "bg-surface": "#24253a",
@@ -186,13 +205,13 @@ def get_theme(name: str) -> dict[str, Any]:
 def load_theme_file(path: Path | str) -> dict[str, Any]:
     """Load a custom theme from a JSON file.
 
-    Missing keys are filled from tokyo-night defaults.
+    Missing keys are filled from the default dark-knight theme.
     """
     with open(path, "r", encoding="utf-8") as f:
         custom = json.load(f)
     if not isinstance(custom, dict):
         raise ValueError("Theme file must be a JSON object")
-    return {**THEMES["tokyo-night"], **custom}
+    return {**THEMES["dark-knight"], **custom}
 
 
 def theme_to_css(theme: dict[str, Any]) -> str:
