@@ -1,6 +1,6 @@
 """
-ai-replay: Convert Claude Code, Cursor, Codex CLI, and OpenCode session transcripts
-to interactive HTML replays.
+ai-replay: Convert Claude Code, Cursor, Codex CLI, OpenCode, and Pi session
+transcripts to interactive HTML replays.
 """
 
 from __future__ import annotations
@@ -158,6 +158,7 @@ def _build_replay(
     assistant_label = (
         "Codex" if fmt == "codex"
         else "OpenCode" if fmt == "opencode"
+        else "Pi" if fmt == "pi"
         else "Assistant" if fmt == "cursor"
         else "Claude"
     )
@@ -192,7 +193,7 @@ def _build_replay(
 @click.version_option(__version__, "-v", "--version")
 @click.pass_context
 def main(ctx: click.Context) -> None:
-    """Convert Claude Code, Cursor, Codex CLI, and OpenCode session transcripts to
+    """Convert Claude Code, Cursor, Codex CLI, OpenCode, and Pi session transcripts to
     interactive HTML replays.
 
     \b
@@ -352,7 +353,8 @@ def generate(
 
     INPUT can be a .jsonl file path or a session ID. If it does not end in
     .jsonl and is not an existing file, it is treated as a session ID and
-    searched in ~/.claude/projects/, ~/.cursor/projects/, and ~/.codex/sessions/.
+    searched in ~/.claude/projects/, ~/.cursor/projects/, ~/.codex/sessions/,
+    and ~/.pi/agent/sessions/.
 
     Multiple inputs are concatenated into a single replay (up to 20). Sessions
     with timestamps are sorted chronologically; otherwise command-line order is

@@ -19,16 +19,18 @@ uv build
 
 ## Architecture
 
-`ai-replay` is a Python CLI that converts AI agent session transcripts (JSONL files) into interactive HTML replays. It supports Claude Code, Cursor, Codex CLI, and OpenCode session formats.
+`ai-replay` is a Python CLI that converts AI agent session transcripts (JSONL files) into interactive HTML replays. It supports Claude Code, Cursor, Codex CLI, OpenCode, and Pi session formats.
 
 **Data flow:**
-1. `discover.py` — scans `~/.claude/projects/`, `~/.cursor/projects/`, `~/.codex/sessions/` → `SessionInfo` list
+1. `discover.py` — scans `~/.claude/projects/`, `~/.cursor/projects/`, `~/.codex/sessions/`, `~/.pi/agent/sessions/` → `SessionInfo` list
 2. `parser.py` — reads JSONL → structured turn dicts (with `blocks`, `tool_use`, timestamps); handles format variants via `detect_format()`
 3. `secrets.py` — optional regex-based secret redaction applied to turn data
 4. `renderer.py` — embeds turns (zlib-compressed + base64) into `templates/player.html` → self-contained HTML
 5. `extract.py` — reverse: parses the embedded blob from HTML back to JSONL
 
 **OpenCode:** stores sessions in a SQLite DB, not on-disk JSONL. ai-replay does *not* read the DB directly — instead the user exports a session with `opencode export <sessionID> > session.json` (a single JSON object `{info, messages:[{info:{role}, parts:[...]}]}`), which is auto-detected as the `"opencode"` format. OpenCode's lowercase tool names (`bash`, `read`, `write`, `edit`, …) are mapped to Claude-Code-style TitleCase names so the player renders the same previews/diffs.
+
+**Pi** ([pi.dev](https://pi.dev)): stores sessions as on-disk JSONL at `~/.pi/agent/sessions/--<cwd>--/<timestamp>_<uuid>.jsonl` (overridable via `PI_CODING_AGENT_DIR`). Entries are one JSON object per line linked by `id`/`parentId`; the parser walks them in file order. Detected as `"pi"` via the `{"type":"session",...}` header or a `{"type":"message","message":{"role":...}}` entry (Pi nests `role` under `message`, unlike Claude). A `message` with `role:"user"` starts a turn; `assistant` content blocks are `text`/`thinking`/`toolCall`; `toolResult` messages attach output by `toolCallId`. Pi's lowercase built-ins (`bash`, `read`, `write`, `edit`, `grep`, `find`, `ls`) are mapped to Claude-Code-style TitleCase names (`find`/`ls` → `Glob`).
 
 **CLI (`__init__.py`)** uses `click-default-group` with `pick` as the default command:
 - `pick` — interactive TUI session selector (via `questionary`)

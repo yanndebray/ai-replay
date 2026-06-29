@@ -1,6 +1,6 @@
 # ai-replay
 
-Convert Claude Code, Cursor, Codex CLI, and OpenCode session transcripts to interactive HTML replays.
+Convert Claude Code, Cursor, Codex CLI, OpenCode, and Pi session transcripts to interactive HTML replays.
 
 **▶️ [See a live demo](https://yanndebray.github.io/ai-replay/demos/replay_ses_176215e90ffeY55qHgZob6CqQd.html)** — preview what a generated replay looks like before you install anything.
 
@@ -47,6 +47,22 @@ ai-replay session.json -o replay.html
 OpenCode's lowercase tool names (`bash`, `read`, `write`, `edit`, …) are mapped
 to their Claude Code equivalents so they render with the same diff views and
 command previews. Reasoning blocks render as thinking blocks.
+
+### Pi
+
+[Pi](https://pi.dev) stores sessions as on-disk JSONL under
+`~/.pi/agent/sessions/--<cwd>--/<timestamp>_<uuid>.jsonl` (overridable via the
+`PI_CODING_AGENT_DIR` environment variable), so they are auto-discovered by the
+picker and parsed automatically — no export step needed:
+
+```bash
+ai-replay <session-id> -o replay.html
+```
+
+Pi's lowercase built-in tool names (`bash`, `read`, `write`, `edit`, `grep`,
+`find`, `ls`) are mapped to their Claude Code equivalents so they render with
+the same diff views and command previews. `thinking` blocks render as thinking
+blocks.
 
 ### Interactive picker options
 

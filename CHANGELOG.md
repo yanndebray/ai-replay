@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add Pi ([pi.dev](https://pi.dev)) session support: on-disk JSONL sessions under `~/.pi/agent/sessions/` (overridable via `PI_CODING_AGENT_DIR`) are auto-discovered and auto-detected as the `pi` format — no export step needed
+- Map Pi's lowercase built-in tool names (`bash`, `read`, `write`, `edit`, `grep`, `find`, `ls`) to Claude-Code-style TitleCase so tool calls render with the same previews and diffs
+- Render Pi thinking blocks as thinking blocks
+
 ## 0.3.0
 
 - Add OpenCode session support: export a session with `opencode export <sessionID> > session.json` and pass it to `ai-replay` (auto-detected as the `opencode` format)
