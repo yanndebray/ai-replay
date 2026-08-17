@@ -1,0 +1,2650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text x='16' y='25' font-size='26' text-anchor='middle'>%F0%9F%8E%AC</text></svg>">
+<title>Replay — -</title>
+<meta name="theme-color" content="#0a1628">
+<meta property="og:title" content="Replay — -">
+<meta property="og:description" content="Interactive AI session replay">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://es617.github.io/claude-replay/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Replay — -">
+<meta name="twitter:description" content="Interactive AI session replay">
+<meta name="twitter:image" content="https://es617.github.io/claude-replay/og.png">
+<style>
+:root {
+  --bg: #0a1628;
+  --bg-surface: #0f2138;
+  --bg-hover: #17314e;
+  --text: #c5d4e8;
+  --text-dim: #5b7290;
+  --text-bright: #eaf2fb;
+  --accent: #ff7900;
+  --accent-dim: #b35500;
+  --green: #4ade80;
+  --blue: #4d94ff;
+  --orange: #ff7900;
+  --red: #f87171;
+  --cyan: #38bdf8;
+  --border: #1d3a5c;
+  --tool-bg: #0c1d33;
+  --thinking-bg: #0e2036;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  -webkit-text-size-adjust: 100%;
+  touch-action: manipulation;
+}
+
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0;
+}
+
+/* Controls bar */
+.controls {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 960px;
+  z-index: 100;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column-reverse;
+}
+
+.controls-row {
+  display: flex;
+  align-items: center;
+  gap: 8px 0;
+  padding: 8px;
+  flex-wrap: wrap;
+}
+
+.controls button {
+  background: var(--bg-hover);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+  flex-shrink: 0;
+  height: 34px;
+  min-width: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.controls button:hover { background: var(--border); }
+#btn-play { width: 36px; }
+#btn-prev, #btn-next { min-width: 30px; width: 30px; font-size: 13px; }
+#btn-prev-turn, #btn-next-turn { min-width: 26px; width: 26px; font-size: 10px; padding: 2px; }
+.nav-group { display: flex; align-items: center; gap: 3px; }
+.controls button.active { background: var(--accent-dim); border-color: var(--accent); }
+
+.bar-title {
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-decoration: none;
+  margin: 0 0 0 12px;
+  flex: 1;
+  min-width: 0;
+}
+@media (max-width: 480px) { .bar-title { display: none; } .nav-group { margin-right: auto; } }
+body.in-iframe .bar-title {
+  cursor: pointer;
+}
+body.in-iframe .bar-title::after {
+  content: " \2197";
+  font-size: 9px;
+}
+body.in-iframe .bar-title:hover {
+  color: var(--text);
+}
+
+.progress-wrap {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 8px;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--bg);
+  border-radius: 2px;
+  cursor: pointer;
+  position: relative;
+  transition: height 0.15s;
+}
+.progress-bar::before {
+  content: "";
+  position: absolute;
+  top: -12px;
+  bottom: -12px;
+  left: 0;
+  right: 0;
+}
+.progress-bar:hover {
+  height: 6px;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.2s;
+}
+.progress-tooltip {
+  position: absolute;
+  bottom: 12px;
+  transform: translateX(-50%);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--text);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 10;
+}
+.progress-bar:hover .progress-tooltip {
+  opacity: 1;
+}
+
+.progress-text {
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  margin-left: 12px;
+}
+
+
+.speed-wrap {
+  position: relative;
+}
+.paced-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  padding: 4px 12px;
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
+}
+.controls-secondary button {
+  width: 34px;
+  min-width: 34px;
+}
+.speed-wrap button#speed-btn {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  letter-spacing: -0.5px;
+}
+.speed-popover {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 0;
+  z-index: 200;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  min-width: 60px;
+}
+.speed-wrap.open .speed-popover { display: block; }
+.speed-popover button {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  padding: 6px 16px;
+  cursor: pointer;
+  text-align: center;
+  white-space: nowrap;
+}
+.speed-popover button:hover { background: var(--bg-hover); color: var(--text); }
+.speed-popover button.active { color: var(--accent); font-weight: 600; }
+
+.filter-wrap {
+  position: relative;
+}
+.filter-popover {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  z-index: 200;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  min-width: 140px;
+}
+.filter-wrap.open .filter-popover { display: block; }
+.filter-popover label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  padding: 4px 0;
+  white-space: nowrap;
+}
+.filter-popover label:hover { color: var(--text); }
+.filter-popover input[type="checkbox"] { accent-color: var(--accent); }
+
+.controls-secondary {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* More menu (replaces secondary controls on mobile + iframe) */
+.more-wrap { position: relative; display: none; margin-left: 6px; }
+@media (max-width: 600px) { .more-wrap { display: block; } }
+.more-popover {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  z-index: 200;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  min-width: 180px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.more-wrap.open .more-popover { display: block; }
+.more-open-link { display: none; font-size: 12px; color: var(--text-dim); text-decoration: none; padding: 4px 0; white-space: nowrap; }
+.more-open-link + hr.more-divider { display: none; }
+body.in-iframe .more-open-link { display: block; }
+body.in-iframe .more-open-link + hr.more-divider { display: block; }
+.more-open-link:hover { color: var(--text); }
+.more-popover label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  padding: 4px 0;
+  white-space: nowrap;
+}
+.more-popover label:hover { color: var(--text); }
+.more-popover input[type="checkbox"] { accent-color: var(--accent); }
+.more-popover .more-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.more-popover .more-row-label {
+  min-width: 50px;
+}
+.more-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 4px 0;
+}
+
+#more-btn {
+  background: none !important;
+  border: none !important;
+  font-size: 16px;
+  font-weight: bold;
+  min-width: 20px;
+  width: 20px;
+  padding: 0;
+  justify-content: flex-end;
+}
+#chapter-btn { font-size: 16px; }
+
+@media (max-width: 600px) {
+  body:not(.in-iframe) .controls-secondary { display: none; }
+  body:not(.in-iframe) .chapter-wrap { display: none !important; }
+}
+/* iframe */
+/* Narrow iframes: collapse into more menu */
+@media (max-width: 600px) {
+  body.in-iframe .controls-secondary { display: none; }
+  body.in-iframe .chapter-wrap { display: none !important; }
+}
+
+/* Transcript area */
+.transcript {
+  padding: calc(100vh - 80px) 16px 100vh;
+  min-height: 100vh;
+}
+
+.turn {
+  margin-bottom: 24px;
+  opacity: 0.25;
+  transition: opacity 0.4s;
+}
+.turn.visible {
+  opacity: 0.35;
+}
+.turn.visible.active {
+  opacity: 1;
+}
+
+/* User message */
+.user-msg {
+  margin-bottom: 8px;
+}
+.user-prompt {
+  color: var(--accent);
+  font-weight: 600;
+}
+.user-text {
+  color: var(--text-bright);
+  word-break: break-word;
+}
+
+/* Timestamp */
+.timestamp {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+/* Assistant text */
+.assistant-text {
+  color: var(--text);
+  word-break: break-word;
+  margin: 6px 0;
+  padding-left: 4px;
+  line-height: 1.6;
+}
+.assistant-text p { margin: 0.4em 0; }
+.assistant-text pre {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  margin: 8px 0;
+  line-height: 1.4;
+}
+.assistant-text pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+.assistant-text code {
+  background: var(--bg);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 0.92em;
+}
+.assistant-text h3, .assistant-text h4, .assistant-text h5, .assistant-text h6 {
+  color: var(--text-bright);
+  margin: 0.8em 0 0.3em;
+  line-height: 1.3;
+}
+.assistant-text h3 { font-size: 1.15em; }
+.assistant-text h4 { font-size: 1.05em; }
+.assistant-text h5, .assistant-text h6 { font-size: 1em; }
+.assistant-text ul, .assistant-text ol {
+  margin: 0.4em 0;
+  padding-left: 1.6em;
+}
+.assistant-text li { margin: 0.15em 0; }
+.assistant-text a {
+  color: var(--blue);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--blue) 40%, transparent);
+}
+.assistant-text a:hover { text-decoration-color: var(--blue); }
+.assistant-text strong { color: var(--text-bright); }
+.assistant-text hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0.8em 0;
+}
+.assistant-text table, .user-text table, .thinking-body table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 0.95em;
+  width: auto;
+  overflow-x: auto;
+  display: block;
+}
+.assistant-text th, .assistant-text td,
+.user-text th, .user-text td,
+.thinking-body th, .thinking-body td {
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  text-align: left;
+}
+.assistant-text th, .user-text th, .thinking-body th {
+  background: var(--bg-surface);
+  color: var(--text-bright);
+  font-weight: 600;
+}
+
+/* Background task notification badge */
+.bg-task-badge {
+  display: inline-block;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: var(--text);
+  margin: 4px 0;
+}
+.bg-task-badge::before {
+  content: "⚡ ";
+}
+
+/* Markdown in user text and thinking */
+.user-text pre, .thinking-body pre {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+.user-text pre code, .thinking-body pre code {
+  background: none; padding: 0; border-radius: 0;
+}
+.user-text code, .thinking-body code {
+  background: var(--bg);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 0.92em;
+}
+.user-text a, .thinking-body a {
+  color: var(--blue);
+  text-decoration: underline;
+}
+.user-text strong, .thinking-body strong { color: var(--text-bright); }
+.user-text ul, .user-text ol, .thinking-body ul, .thinking-body ol {
+  margin: 0.4em 0;
+  padding-left: 1.6em;
+}
+.user-text p, .thinking-body p { margin: 0.4em 0; }
+
+/* Tool call */
+.tool-block {
+  margin: 6px 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--tool-bg);
+}
+.tool-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+.tool-header:hover { background: var(--bg-hover); }
+.tool-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--blue);
+  flex-shrink: 0;
+}
+.tool-name {
+  color: var(--cyan);
+  font-weight: 600;
+}
+.tool-args-preview {
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.tool-chevron {
+  color: var(--text-dim);
+  font-size: 10px;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+.tool-block.open .tool-chevron { transform: rotate(90deg); }
+
+.tool-body {
+  display: none;
+  border-top: 1px solid var(--border);
+}
+.tool-block.open .tool-body { display: block; }
+
+.tool-input, .tool-result {
+  padding: 8px 10px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.tool-input {
+  color: var(--text-dim);
+  background: var(--tool-bg);
+}
+.tool-result {
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  color: var(--green);
+}
+.tool-result-label, .tool-input-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+/* Diff view for Edit/Write tools */
+.diff-view { font-family: inherit; font-size: 12px; padding: 8px 10px; white-space: pre-wrap; word-break: break-word; max-height: 300px; overflow-y: auto; }
+.diff-file { color: var(--text-dim); font-size: 11px; margin-bottom: 6px; }
+.diff-line-del { color: var(--red); background: rgba(248,81,73,0.1); }
+.diff-line-add { color: var(--green); background: rgba(63,185,80,0.1); }
+.diff-result { color: var(--text-dim); font-size: 11px; padding: 6px 10px; border-top: 1px solid var(--border); }
+.diff-result-error { color: var(--red); }
+.tool-indicator.tool-error { background: var(--red); }
+.tool-result.tool-result-error { color: var(--red); }
+
+/* Tool group (consecutive tool calls) */
+.tool-group {
+  margin: 6px 0;
+}
+.tool-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  color: var(--cyan);
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--tool-bg);
+  transition: background 0.15s;
+}
+.tool-group-header:hover { background: var(--bg-hover); }
+.tool-group-chevron {
+  font-size: 10px;
+  color: var(--text-dim);
+  transition: transform 0.2s;
+}
+.tool-group.open .tool-group-chevron { transform: rotate(90deg); }
+.tool-group-names {
+  color: var(--text-dim);
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.tool-group-body {
+  display: none;
+}
+.tool-group.open .tool-group-body { display: block; }
+.tool-group.open .tool-group-header {
+  border-radius: 6px 6px 0 0;
+  border-bottom: none;
+}
+
+/* Thinking block */
+.thinking-block {
+  margin: 6px 0;
+  border-left: 2px solid var(--text-dim);
+  padding-left: 10px;
+}
+.thinking-header {
+  font-size: 11px;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.thinking-chevron {
+  font-size: 10px;
+  transition: transform 0.2s;
+}
+.thinking-block.open .thinking-chevron { transform: rotate(90deg); }
+.thinking-body {
+  display: none;
+  color: var(--text-dim);
+  font-size: 12px;
+  word-break: break-word;
+  margin-top: 4px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+.thinking-block.open .thinking-body { display: block; }
+
+/* Turn header bar */
+.turn-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  border-radius: 6px 6px 0 0;
+  cursor: pointer;
+  user-select: none;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.turn-header:hover { background: var(--bg-hover); }
+.turn-header-chevron {
+  font-size: 10px;
+  transition: transform 0.2s;
+}
+.turn.collapsed .turn-header-chevron { transform: rotate(-90deg); }
+.turn-header-label { font-weight: 600; color: var(--text); }
+.turn-header-ts { margin-left: auto; font-size: 10px; }
+.turn-body {
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+.turn.collapsed .turn-body { display: none; }
+
+/* Role sections */
+.role-section {
+  padding: 8px 12px;
+  margin: 4px 0;
+  border-radius: 4px;
+}
+.role-section.role-user {
+  background: var(--bg-surface);
+  border-left: 3px solid var(--accent);
+}
+.role-section.role-assistant {
+  border-left: 3px solid var(--cyan);
+}
+.role-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+.role-label.role-user-label { color: var(--accent); }
+.role-label.role-assistant-label { color: var(--cyan); }
+.role-label.role-system-label { color: var(--text); font-style: italic; }
+
+/* Collapsible long content */
+.collapsible-wrap { position: relative; }
+.collapsible-wrap.is-collapsed .collapsible-content {
+  max-height: 13em;
+  overflow: hidden;
+}
+.collapsible-wrap.is-collapsed .collapsible-fade {
+  display: block;
+  position: absolute;
+  bottom: 24px;
+  left: 0;
+  right: 0;
+  height: 3em;
+  background: linear-gradient(transparent, var(--bg));
+  pointer-events: none;
+}
+.role-section.role-user .collapsible-wrap.is-collapsed .collapsible-fade {
+  background: linear-gradient(transparent, var(--bg-surface));
+}
+.collapsible-fade { display: none; }
+.collapsible-toggle {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 2px 0;
+  user-select: none;
+  border: none;
+  background: none;
+  font-family: inherit;
+}
+.collapsible-toggle:hover { text-decoration: underline; }
+
+/* Typing cursor */
+.cursor {
+  display: inline-block;
+  width: 7px;
+  height: 14px;
+  background: var(--accent);
+  animation: blink 1s step-end infinite;
+  vertical-align: text-bottom;
+  margin-left: 2px;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+/* Active block spinner — visible on the block currently waiting during playback */
+.block-spinner {
+  display: none;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--text-dim);
+  border-top-color: var(--text);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+.block-active .block-spinner { display: inline-block; }
+.block-active { border-left: 2px solid var(--accent); padding-left: 6px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Mobile: larger touch targets, prevent iOS zoom */
+@media (max-width: 600px) {
+  .controls-row {
+    padding: 6px 8px;
+  }
+  .controls button {
+    min-height: 40px;
+    min-width: 40px;
+    padding: 6px 10px;
+    font-size: 14px;
+  }
+  .filter-popover label {
+    font-size: 14px;
+    padding: 6px 0;
+  }
+  .filter-popover input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+  }
+  .controls-secondary {
+    gap: 10px;
+  }
+}
+
+/* Turn tick dots on progress bar */
+.turn-dot {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.5;
+}
+.turn-dot.reached { opacity: 1; background: var(--text); }
+
+/* Bookmark dots on progress bar */
+.bookmark-dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--orange);
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.3;
+  transition: opacity 0.3s, transform 0.15s;
+}
+.bookmark-dot.reached { opacity: 0.6; }
+.bookmark-dot.active { opacity: 1; transform: translate(-50%, -50%) scale(1.4); }
+
+/* Bookmark divider in transcript */
+.bookmark-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0 8px;
+  padding: 4px 0 4px 8px;
+  border-left: 3px solid var(--orange);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--orange);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.25;
+  transition: opacity 0.4s;
+}
+.bookmark-divider.visible { opacity: 1; }
+
+/* Chapter menu */
+.chapter-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+.chapter-menu {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 0;
+  z-index: 200;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  min-width: 160px;
+  max-width: 280px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.chapter-wrap.open .chapter-menu { display: block; }
+.chapter-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.chapter-item:hover { background: var(--bg-hover); }
+.chapter-item-turn {
+  color: var(--text-dim);
+  font-size: 10px;
+  min-width: 24px;
+}
+.chapter-item-label {
+  color: var(--orange);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Splash / title screen */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  background: var(--bg);
+}
+.splash.hidden { display: none; }
+.splash-title {
+  color: var(--text);
+  font-size: 22px;
+  font-weight: 600;
+  text-align: center;
+  max-width: 600px;
+  padding: 0 24px;
+}
+.splash-play {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, color 0.2s;
+  padding-left: 4px;
+}
+.splash-play:hover {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+/* Sub-turn animation */
+.block-hidden { display: none; }
+.block-revealing {
+  animation: blockFadeIn 0.2s ease-out;
+}
+@keyframes blockFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="controls">
+    <div class="controls-row">
+      <div class="nav-group">
+        <button id="btn-prev-turn" title="Previous turn">&#x23EE;&#xFE0E;</button>
+        <button id="btn-prev" title="Previous block">&larr;</button>
+        <button id="btn-play" title="Play / Pause">&#9654;</button>
+        <button id="btn-next" title="Next block">&rarr;</button>
+        <button id="btn-next-turn" title="Next turn">&#x23ED;&#xFE0E;</button>
+      </div>
+      <a class="bar-title" id="bar-title" title="Replay — -">Replay — -</a>
+      <span class="progress-text" id="progress-text">0 of 0</span>
+      <div class="controls-secondary">
+        <div class="chapter-wrap" id="chapter-wrap" style="display:none">
+          <button id="chapter-btn" title="Chapters">&#9776;</button>
+          <div class="chapter-menu" id="chapter-menu"></div>
+        </div>
+        <div class="speed-wrap" id="speed-wrap">
+          <button id="speed-btn" title="Speed">1x</button>
+          <div class="speed-popover" id="speed-popover"></div>
+        </div>
+        <div class="filter-wrap" id="filter-wrap">
+          <button id="filter-btn" title="Filter content"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.5A.5.5 0 0 1 1.5 2h13a.5.5 0 0 1 .4.8L10 8.7V13.5a.5.5 0 0 1-.7.5l-2.5-1.2a.5.5 0 0 1-.3-.5V8.7L1.1 2.8A.5.5 0 0 1 1 2.5z"/></svg></button>
+          <div class="filter-popover">
+            <label><input type="checkbox" id="toggle-thinking" checked> Thinking</label>
+            <label><input type="checkbox" id="toggle-tools" checked> Tools</label>
+          </div>
+        </div>
+      </div>
+      <div class="more-wrap" id="more-wrap">
+        <button id="more-btn" title="More">&#x22EE;</button>
+        <div class="more-popover" id="more-popover">
+          <a class="more-open-link" id="more-open-link" href="#" target="_blank" rel="noopener">Open in new tab &#x2197;</a>
+          <hr class="more-divider">
+          <div class="more-row">
+            <span class="more-row-label">Speed</span>
+            <button id="speed-btn2" title="Cycle speed">1x</button>
+          </div>
+          <label class="paced-toggle2" id="paced-toggle-wrap2" style="display:none" title="Smooth out pauses — timing based on content length instead of real time"><input type="checkbox" id="toggle-paced2"> Auto-paced</label>
+          <hr class="more-divider">
+          <label><input type="checkbox" id="toggle-thinking2" checked> Thinking</label>
+          <label><input type="checkbox" id="toggle-tools2" checked> Tools</label>
+          <hr class="more-divider">
+          <div id="more-chapters" style="display:none">
+            <hr class="more-divider">
+            <div id="more-chapter-list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="progress-wrap">
+      <div class="progress-bar" id="progress-bar">
+        <div class="progress-fill" id="progress-fill"></div>
+        <div class="progress-tooltip" id="progress-tooltip"></div>
+      </div>
+    </div>
+  </div>
+  <div id="splash" class="splash">
+    <div class="splash-title">Replay — -</div>
+    <button class="splash-play" id="splash-play">&#9654;</button>
+  </div>
+  <div class="transcript" id="transcript" style="opacity:0.5">Loading...</div>
+</div>
+
+<script>
+(async function() {
+  "use strict";
+
+  // ═══════════════════════════════════════════
+  // § CONFIG & CONSTANTS
+  // ═══════════════════════════════════════════
+
+  // Decode embedded data: deflate+base64 (compressed) or raw JSON string.
+  // Uses browser-native DecompressionStream — Node deflateSync ↔ browser DecompressionStream("deflate").
+  async function decodeData(raw) {
+    // Raw JSON (from --no-compress): starts with [ or {
+    if (raw.startsWith("[") || raw.startsWith("{")) return JSON.parse(raw);
+    // Compressed base64 — requires DecompressionStream
+    if (typeof DecompressionStream === "undefined") {
+      document.getElementById("transcript").textContent =
+        "This replay uses compressed data, but your browser does not support DecompressionStream. " +
+        "Please use a modern browser (Chrome 80+, Firefox 113+, Safari 16.4+), " +
+        "or rebuild with --no-compress.";
+      throw new Error("DecompressionStream not supported");
+    }
+    const bytes = Uint8Array.from(atob(raw), c => c.charCodeAt(0));
+    const ds = new DecompressionStream("deflate");
+    const writer = ds.writable.getWriter();
+    writer.write(bytes);
+    writer.close();
+    return JSON.parse(await new Response(ds.readable).text());
+  }
+
+  const TURNS = await decodeData("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");
+  const BOOKMARKS = await decodeData("eJyLjgUAARUAuQ==");
+
+  const SPEED_STEPS = [0.5, 1, 2, 3, 5];
+  const ANIMATE_MIN_DELAY = 600;       // minimum ms between consecutive block reveals
+  const ANIMATE_FALLBACK_DELAY = 800;  // ms between blocks when timestamps missing
+  const ANIMATE_MAX_DELAY = 10000;     // max ms between blocks (before speed scaling)
+  const PEEK_OFFSET = 20;              // px of next dimmed turn visible below
+  const SHORT_TURN_DELAY_MS = 5000;    // delay between turns during playback
+  const TURN_SCROLL_MS = 600;          // duration of scroll between turns
+
+  // Compute session timestamps for elapsed/total timer
+  const hasRealTimestamps = true;
+  let usePaced = false;
+
+  function computeRealTiming() {
+    const start = TURNS.length > 0 && TURNS[0].timestamp
+      ? new Date(TURNS[0].timestamp).getTime() : null;
+    const starts = TURNS.map((t) => t.timestamp ? new Date(t.timestamp).getTime() : 0);
+    const ends = TURNS.map((t) => {
+      let latest = t.timestamp ? new Date(t.timestamp).getTime() : 0;
+      for (const b of t.blocks || []) {
+        if (b.timestamp) latest = Math.max(latest, new Date(b.timestamp).getTime());
+        if (b.tool_call?.resultTimestamp) latest = Math.max(latest, new Date(b.tool_call.resultTimestamp).getTime());
+      }
+      return latest;
+    });
+    const total = start != null && ends.length ? ends[ends.length - 1] - start : 0;
+    return { start, starts, ends, total };
+  }
+
+  function computePacedTiming() {
+    let cursor = 0;
+    const starts = [];
+    const ends = [];
+    for (const turn of TURNS) {
+      starts.push(cursor);
+      cursor += 500; // pause before assistant responds
+      for (const b of turn.blocks || []) {
+        const len = (b.text || "").length;
+        cursor += Math.min(Math.max(len * 30, 1000), 10000);
+      }
+      ends.push(cursor);
+    }
+    return { start: 0, starts, ends, total: cursor };
+  }
+
+  const realTiming = computeRealTiming();
+  const pacedTiming = computePacedTiming();
+  let sessionStart = realTiming.start;
+  let turnStartTimes = realTiming.starts;
+  let turnEndTimes = realTiming.ends;
+  let sessionTotalMs = realTiming.total;
+
+  function switchTiming(paced) {
+    usePaced = paced;
+    const t = paced ? pacedTiming : realTiming;
+    sessionStart = t.start;
+    turnStartTimes = t.starts;
+    turnEndTimes = t.ends;
+    sessionTotalMs = t.total;
+    displayedTimeMs = 0;
+    updateTimerDisplay();
+    syncTimerToBlock();
+    updateProgress();
+  }
+
+  function formatTime(ms) {
+    if (ms <= 0) return "0:00";
+    const totalSec = Math.round(ms / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    if (h > 0) return h + ":" + String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+    return m + ":" + String(s).padStart(2, "0");
+  }
+
+  // Build a map of turn index → bookmark label for quick lookup
+  const bookmarkMap = new Map();
+  for (const bm of BOOKMARKS) bookmarkMap.set(bm.turn, bm.label);
+
+  // ═══════════════════════════════════════════
+  // § DOM REFS
+  // ═══════════════════════════════════════════
+
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => document.querySelectorAll(sel);
+
+  const transcript = $("#transcript");
+  const btnPlay = $("#btn-play");
+  const btnPrev = $("#btn-prev");
+  const btnNext = $("#btn-next");
+  const btnPrevTurn = $("#btn-prev-turn");
+  const btnNextTurn = $("#btn-next-turn");
+  const progressFill = $("#progress-fill");
+  const progressText = $("#progress-text");
+  const progressBar = $("#progress-bar");
+  const progressTooltip = $("#progress-tooltip");
+  const speedBtn = $("#speed-btn");
+  const speedBtn2 = $("#speed-btn2");
+  const speedWrap = $("#speed-wrap");
+  const speedPopover = $("#speed-popover");
+  const filterWrap = $("#filter-wrap");
+  const filterBtn = $("#filter-btn");
+  const toggleThinking = $("#toggle-thinking");
+  const toggleTools = $("#toggle-tools");
+  let togglePaced = $("#toggle-paced");
+  const toggleThinking2 = $("#toggle-thinking2");
+  const toggleTools2 = $("#toggle-tools2");
+  const togglePaced2 = $("#toggle-paced2");
+  const moreWrap = $("#more-wrap");
+  const moreBtn = $("#more-btn");
+  const chapterWrap = $("#chapter-wrap");
+  const chapterBtn = $("#chapter-btn");
+  const chapterMenu = $("#chapter-menu");
+  const barTitle = $("#bar-title");
+  const controlsEl = $(".controls");
+  const splash = $("#splash");
+
+  // ═══════════════════════════════════════════
+  // § STATE
+  // ═══════════════════════════════════════════
+
+  let currentTurn = 0;
+  let playing = false;
+  let playTimer = null;
+  let speed = 1;
+  let animateCancelFn = null;
+  let animatePausedState = null; // { turnIndex, blockIdx } when paused mid-turn
+  let scrollProtectUntil = 0;    // timestamp — suppress scroll tracking after programmatic scrolls
+  let scrollAnim = null;
+  let scrollTick = false;
+  let timerInterval = null;
+  let displayedTimeMs = 0;  // session elapsed time shown in timer
+
+  // ═══════════════════════════════════════════
+  // § UTILITIES
+  // ═══════════════════════════════════════════
+
+  function escapeHtml(text) {
+    const div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  function renderMarkdown(text) {
+    if (!text) return "";
+    // Extract fenced code blocks first so markdown inside them is untouched
+    const codeBlocks = [];
+    let src = text.replace(/```([^\n]*)\n([\s\S]*?)```/g, (_, lang, code) => {
+      const idx = codeBlocks.length;
+      codeBlocks.push(`<pre><code${lang ? ` class="language-${escapeHtml(lang)}"` : ""}>${escapeHtml(code.replace(/\n$/, ""))}</code></pre>`);
+      return `\x00CB${idx}\x00`;
+    });
+    // Process line by line
+    const lines = src.split("\n");
+    let out = "";
+    let inList = null; // "ul" | "ol" | null
+    for (let i = 0; i < lines.length; i++) {
+      let line = lines[i];
+      // Code block placeholder — emit directly
+      const cbMatch = line.match(/^\x00CB(\d+)\x00$/);
+      if (cbMatch) {
+        if (inList) { out += `</${inList}>`; inList = null; }
+        out += codeBlocks[parseInt(cbMatch[1])];
+        continue;
+      }
+      // Horizontal rule
+      if (/^---+$/.test(line.trim())) {
+        if (inList) { out += `</${inList}>`; inList = null; }
+        out += "<hr>";
+        continue;
+      }
+      // Headers (# through ####)
+      const hMatch = line.match(/^(#{1,4})\s+(.+)$/);
+      if (hMatch) {
+        if (inList) { out += `</${inList}>`; inList = null; }
+        const level = Math.min(hMatch[1].length + 2, 6); // #→h3, ##→h4, ###→h5, ####→h6
+        out += `<h${level}>${inlineMarkdown(escapeHtml(hMatch[2]))}</h${level}>`;
+        continue;
+      }
+      // Unordered list
+      const ulMatch = line.match(/^(\s*)[-*]\s+(.+)$/);
+      if (ulMatch) {
+        if (inList !== "ul") { if (inList) out += `</${inList}>`; out += "<ul>"; inList = "ul"; }
+        out += `<li>${inlineMarkdown(escapeHtml(ulMatch[2]))}</li>`;
+        continue;
+      }
+      // Ordered list
+      const olMatch = line.match(/^(\s*)\d+\.\s+(.+)$/);
+      if (olMatch) {
+        if (inList !== "ol") { if (inList) out += `</${inList}>`; out += "<ol>"; inList = "ol"; }
+        out += `<li>${inlineMarkdown(escapeHtml(olMatch[2]))}</li>`;
+        continue;
+      }
+      // Close any open list
+      if (inList && line.trim() === "") { out += `</${inList}>`; inList = null; }
+      // Table: detect header row followed by separator row
+      if (line.trim().startsWith("|") && i + 1 < lines.length && /^\|[\s:-]+\|/.test(lines[i + 1].trim())) {
+        if (inList) { out += `</${inList}>`; inList = null; }
+        const parseRow = (r) => r.replace(/^\||\|$/g, "").split("|").map(c => inlineMarkdown(escapeHtml(c.trim())));
+        const headers = parseRow(line);
+        i++; // skip separator row
+        let rows = [];
+        while (i + 1 < lines.length && lines[i + 1].trim().startsWith("|")) {
+          i++;
+          rows.push(parseRow(lines[i]));
+        }
+        out += "<table><thead><tr>" + headers.map(h => `<th>${h}</th>`).join("") + "</tr></thead>";
+        if (rows.length) {
+          out += "<tbody>" + rows.map(r => "<tr>" + r.map(c => `<td>${c}</td>`).join("") + "</tr>").join("") + "</tbody>";
+        }
+        out += "</table>";
+        continue;
+      }
+      // Regular text — wrap non-empty lines in <p>, blank lines as breaks
+      if (line.trim() === "") {
+        if (out.length > 0) out += "\n";
+      } else {
+        out += `<p>${inlineMarkdown(escapeHtml(line))}</p>`;
+      }
+    }
+    if (inList) out += `</${inList}>`;
+    return out;
+  }
+
+  function inlineMarkdown(html) {
+    // Inline code (backticks) — process first so content inside is protected
+    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+    // Bold
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    // Italic (single * not preceded/followed by space — avoid false positives on bullet lists)
+    html = html.replace(/(?<!\w)\*([^*]+?)\*(?!\w)/g, '<em>$1</em>');
+    // Links
+    html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    return html;
+  }
+
+  function truncate(text, max) {
+    if (!text) return "";
+    const s = typeof text === "string" ? text : JSON.stringify(text);
+    const oneLine = s.replace(/\n/g, " ").trim();
+    return oneLine.length > max ? oneLine.slice(0, max) + "..." : oneLine;
+  }
+
+  function formatInput(input) {
+    if (typeof input === "string") return escapeHtml(input);
+    try {
+      return escapeHtml(JSON.stringify(input, null, 2));
+    } catch {
+      return escapeHtml(String(input));
+    }
+  }
+
+  function toolPreview(tc) {
+    const name = tc.name || "";
+    const input = tc.input || {};
+    if (name === "Edit" || name === "Write" || name === "Read") {
+      return input.file_path || "";
+    }
+    if (name === "Grep" || name === "Glob") {
+      const p = input.pattern || "";
+      return input.path ? p + " in " + input.path : p;
+    }
+    if (name === "Bash") {
+      return input.command || "";
+    }
+    return truncate(input, 60);
+  }
+
+  function formatToolBody(tc) {
+    const name = tc.name || "";
+    const input = tc.input || {};
+
+    if (name === "Edit" && input.old_string != null && input.new_string != null) {
+      const fp = input.file_path || "";
+      const oldLines = String(input.old_string).split("\n");
+      const newLines = String(input.new_string).split("\n");
+      let diffHtml = `<div class="diff-view"><div class="diff-file">${escapeHtml(fp)}${input.replace_all ? " (replace all)" : ""}</div>`;
+      for (const l of oldLines) {
+        diffHtml += `<div class="diff-line-del">${escapeHtml("\u2212 " + l)}</div>`;
+      }
+      for (const l of newLines) {
+        diffHtml += `<div class="diff-line-add">${escapeHtml("+ " + l)}</div>`;
+      }
+      diffHtml += "</div>";
+      if (tc.result != null) {
+        const errCls = tc.is_error ? " diff-result-error" : "";
+        diffHtml += `<div class="diff-result${errCls}">${escapeHtml(tc.result)}</div>`;
+      }
+      return diffHtml;
+    }
+
+    if (name === "Write" && input.content != null) {
+      const fp = input.file_path || "";
+      let html = `<div class="diff-view"><div class="diff-file">${escapeHtml(fp)}</div><pre style="margin:0;background:none;border:none;padding:0;overflow:visible;"><code>${escapeHtml(input.content)}</code></pre></div>`;
+      if (tc.result != null) {
+        const errCls = tc.is_error ? " diff-result-error" : "";
+        html += `<div class="diff-result${errCls}">${escapeHtml(tc.result)}</div>`;
+      }
+      return html;
+    }
+
+    // Default: generic input + result
+    let bodyHtml = `<div class="tool-input"><div class="tool-input-label">Input</div>${formatInput(input)}</div>`;
+    if (tc.result != null) {
+      const errCls = tc.is_error ? " tool-result-error" : "";
+      bodyHtml += `<div class="tool-result${errCls}" data-type="result"><div class="tool-result-label">Result</div>${escapeHtml(tc.result)}</div>`;
+    }
+    return bodyHtml;
+  }
+
+  function countLines(text) {
+    if (!text) return 0;
+    return text.split("\n").length;
+  }
+
+  function wrapCollapsible(contentHtml, totalLines, threshold) {
+    if (totalLines <= threshold) return contentHtml;
+    return `<div class="collapsible-wrap is-collapsed">
+      <div class="collapsible-content">${contentHtml}</div>
+      <div class="collapsible-fade"></div>
+      <button class="collapsible-toggle" onclick="toggleCollapsible(this)">Show more (${totalLines} lines)</button>
+    </div>`;
+  }
+
+  // Exposed globally for onclick
+  window.toggleCollapsible = function(btn) {
+    const wrap = btn.closest(".collapsible-wrap");
+    const collapsed = wrap.classList.toggle("is-collapsed");
+    const totalLines = wrap.querySelector(".collapsible-content").textContent.split("\n").length;
+    btn.textContent = collapsed ? `Show more (${totalLines} lines)` : "Show less";
+  };
+
+
+  function formatUtcTime(d) {
+    return d.toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC");
+  }
+
+  function getControlsHeight() { return controlsEl.offsetHeight; }
+
+  function collapseExpanded(el) {
+    for (const o of el.querySelectorAll(".open")) o.classList.remove("open");
+  }
+
+  // Splash screen helpers
+  function showSplash() { splash.classList.remove("hidden"); }
+  function hideSplash() { splash.classList.add("hidden"); }
+  function isSplashVisible() { return !splash.classList.contains("hidden"); }
+
+  // Progress bar math: map between 1-based turn numbers and 0-1 percentages
+  function turnToPct(turn) {
+    return TURNS.length > 1 ? (turn - 1) / (TURNS.length - 1) : (turn ? 1 : 0);
+  }
+  function pctToTurn(pct) {
+    return Math.min(TURNS.length, Math.round(pct * (TURNS.length - 1)) + 1);
+  }
+
+  // Get only .turn elements (excludes bookmark dividers)
+  function turnElements() { return transcript.querySelectorAll(".turn"); }
+
+  // ═══════════════════════════════════════════
+  // § BLOCK REVEAL HELPERS
+  // ═══════════════════════════════════════════
+
+  function revealAllBlocks(turnEl) {
+    for (const w of turnEl.querySelectorAll(".block-wrapper.block-hidden")) {
+      w.classList.remove("block-hidden");
+    }
+  }
+
+  function hideAllBlocks(turnEl) {
+    for (const w of turnEl.querySelectorAll(".block-wrapper")) {
+      w.classList.add("block-hidden");
+      w.classList.remove("block-revealing", "block-active");
+    }
+  }
+
+  function updateBookmarkVisibility() {
+    for (const div of transcript.querySelectorAll(".bookmark-divider")) {
+      const t = parseInt(div.dataset.turn, 10);
+      div.classList.toggle("visible", t <= currentTurn);
+    }
+  }
+
+  // ═══════════════════════════════════════════
+  // § SPEED MANAGEMENT
+  // ═══════════════════════════════════════════
+
+  function updateSpeedLabel() {
+    speedBtn.textContent = speed + "x";
+    speedBtn2.textContent = speed + "x";
+    for (const btn of speedPopover.querySelectorAll("button")) {
+      btn.classList.toggle("active", parseFloat(btn.dataset.speed) === speed);
+    }
+  }
+
+  function setSpeed(newSpeed) {
+    speed = newSpeed;
+    updateSpeedLabel();
+  }
+
+  // ═══════════════════════════════════════════
+  // § RENDERING
+  // ═══════════════════════════════════════════
+
+  function renderTurn(turn, displayNum) {
+    const el = document.createElement("div");
+    el.className = "turn";
+    el.dataset.index = turn.index;
+
+    let html = "";
+
+    // Turn header bar
+    let relStr = "";
+    let absStr = "";
+    if (turn.timestamp) {
+      const d = new Date(turn.timestamp);
+      absStr = formatUtcTime(d);
+      if (sessionStart != null) {
+        const delta = d.getTime() - sessionStart;
+        relStr = formatTime(delta);
+      }
+    }
+    const tsHtml = relStr || absStr
+      ? `<span class="turn-header-ts" ${absStr ? `title="${absStr}"` : ""}>${relStr || absStr}</span>`
+      : "";
+    const label = displayNum != null ? displayNum : turn.index;
+    html += `<div class="turn-header" onclick="this.parentElement.classList.toggle('collapsed')">
+      <span class="turn-header-chevron">&#9660;</span>
+      <span class="turn-header-label">#${label}</span>
+      ${tsHtml}
+    </div>`;
+
+    html += `<div class="turn-body">`;
+
+    // User message
+    if (turn.user_text) {
+      const userLines = countLines(turn.user_text);
+      const userContent = `<div class="user-text">${renderMarkdown(turn.user_text)}</div>`;
+      html += `<div class="role-section role-user">
+        <div class="role-label role-user-label">User</div>
+        ${wrapCollapsible(userContent, userLines, 10)}
+      </div>`;
+    }
+
+    // System events (background task notifications)
+    if (turn.system_events && turn.system_events.length) {
+      html += `<div class="role-section role-system">`;
+      html += `<div class="role-label role-system-label">System</div>`;
+      for (const ev of turn.system_events) {
+        html += `<div class="bg-task-badge">${escapeHtml(ev)}</div>`;
+      }
+      html += `</div>`;
+    }
+
+    // Assistant blocks
+    if (turn.blocks.length > 0) {
+      html += `<div class="role-section role-assistant">`;
+      html += `<div class="role-label role-assistant-label">Pi</div>`;
+
+      // Group consecutive tool_use blocks into runs
+      const segments = [];
+      let toolRun = [];
+      let blockIdx = 0;
+      for (const block of turn.blocks) {
+        if (block.kind === "tool_use" && block.tool_call) {
+          toolRun.push(block);
+        } else {
+          if (toolRun.length > 0) { segments.push({ type: "tools", blocks: toolRun, blockIdx: blockIdx++ }); toolRun = []; }
+          segments.push({ type: "single", block, blockIdx: blockIdx++ });
+        }
+      }
+      if (toolRun.length > 0) { segments.push({ type: "tools", blocks: toolRun, blockIdx: blockIdx++ }); }
+
+      for (const seg of segments) {
+        const hiddenCls = " block-hidden";
+        if (seg.type === "single") {
+          const block = seg.block;
+          if (block.kind === "text") {
+            const lines = countLines(block.text);
+            const textContent = `<div class="assistant-text">${renderMarkdown(block.text)}</div>`;
+            html += `<div class="block-wrapper${hiddenCls}" data-block-idx="${seg.blockIdx}">${wrapCollapsible(textContent, lines, 15)}</div>`;
+          } else if (block.kind === "thinking") {
+            html += `<div class="block-wrapper${hiddenCls}" data-block-idx="${seg.blockIdx}"><div class="thinking-block" data-type="thinking">
+              <div class="thinking-header" onclick="this.parentElement.classList.toggle('open')">
+                <span class="thinking-chevron">&#9654;</span> Thinking <span class="block-spinner"></span>
+              </div>
+              <div class="thinking-body">${renderMarkdown(block.text)}</div>
+            </div></div>`;
+          }
+        } else {
+          // Consecutive tool calls
+          const toolHtml = seg.blocks.map(block => {
+            const tc = block.tool_call;
+            const preview = toolPreview(tc);
+            const bodyHtml = formatToolBody(tc);
+            return `<div class="tool-block" data-type="tool">
+              <div class="tool-header" onclick="this.parentElement.classList.toggle('open')">
+                <span class="tool-indicator${tc.is_error ? " tool-error" : ""}"></span>
+                <span class="tool-name">${escapeHtml(tc.name)}</span>
+                <span class="tool-args-preview">${escapeHtml(preview)}</span>
+                <span class="block-spinner"></span>
+                <span class="tool-chevron">&#9654;</span>
+              </div>
+              <div class="tool-body">${bodyHtml}</div>
+            </div>`;
+          }).join("");
+
+          if (seg.blocks.length <= 4) {
+            html += `<div class="block-wrapper${hiddenCls}" data-block-idx="${seg.blockIdx}">${toolHtml}</div>`;
+          } else {
+            const names = seg.blocks.map(b => b.tool_call.name);
+            const uniqueNames = [...new Set(names)].join(", ");
+            const hasError = seg.blocks.some(b => b.tool_call.is_error);
+            html += `<div class="block-wrapper${hiddenCls}" data-block-idx="${seg.blockIdx}"><div class="tool-group" data-type="tool">
+              <div class="tool-group-header" onclick="this.parentElement.classList.toggle('open')">
+                <span class="tool-group-chevron">&#9654;</span>
+                ${hasError ? '<span class="tool-indicator tool-error" style="display:inline-block;margin-right:4px;"></span>' : ''}${seg.blocks.length} tool calls
+                <span class="tool-group-names">${escapeHtml(uniqueNames)}</span>
+                <span class="block-spinner"></span>
+              </div>
+              <div class="tool-group-body">${toolHtml}</div>
+            </div></div>`;
+          }
+        }
+      }
+
+      html += `</div>`; // close role-assistant
+    }
+
+    html += `</div>`; // close turn-body
+
+    el.innerHTML = html;
+    return el;
+  }
+
+  function renderAllTurns() {
+    for (let i = 0; i < TURNS.length; i++) {
+      const turn = TURNS[i];
+      const bmLabel = bookmarkMap.get(turn.index);
+      if (bmLabel) {
+        const divider = document.createElement("div");
+        divider.className = "bookmark-divider";
+        divider.dataset.turn = turn.index;
+        divider.textContent = bmLabel;
+        transcript.appendChild(divider);
+      }
+      const el = renderTurn(turn, i + 1);
+      transcript.appendChild(el);
+    }
+  }
+
+  function applyVisibility() {
+    const showThinking = toggleThinking.checked;
+    const showTools = toggleTools.checked;
+
+    for (const el of $$('[data-type="thinking"]')) {
+      el.style.display = showThinking ? "" : "none";
+    }
+    for (const el of $$('[data-type="tool"]')) {
+      el.style.display = showTools ? "" : "none";
+    }
+  }
+
+  // ═══════════════════════════════════════════
+  // § PLAYER ENGINE
+  // ═══════════════════════════════════════════
+
+  function cancelScrollAnim() {
+    if (scrollAnim) { cancelAnimationFrame(scrollAnim); scrollAnim = null; }
+  }
+
+  function smoothScrollTo(targetY, duration, callback) {
+    cancelScrollAnim();
+    const startY = window.scrollY;
+    const dist = targetY - startY;
+    if (Math.abs(dist) < 2) { if (callback) callback(); return; }
+    const startTime = performance.now();
+    const requirePlaying = !!callback; // only gate on playing when used by auto-play
+    function step(now) {
+      if (requirePlaying && !playing) { cancelScrollAnim(); return; }
+      const elapsed = now - startTime;
+      const t = Math.min(elapsed / duration, 1);
+      // ease-in-out
+      const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+      window.scrollTo(0, startY + dist * ease);
+      if (t < 1) {
+        scrollAnim = requestAnimationFrame(step);
+      } else {
+        scrollAnim = null;
+        if (callback) callback();
+      }
+    }
+    scrollAnim = requestAnimationFrame(step);
+  }
+
+  function scrollToTurn(el) {
+    scrollProtectUntil = Date.now() + 2000;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const absBottom = el.getBoundingClientRect().bottom + window.scrollY;
+        const barH = getControlsHeight();
+        const viewH = window.innerHeight - barH;
+        const targetY = Math.max(0, absBottom - viewH + PEEK_OFFSET);
+        const dist = Math.abs(targetY - window.scrollY);
+        if (dist < 2) return;
+        const duration = Math.min(TURN_SCROLL_MS + dist * 0.3, 1500);
+        smoothScrollTo(targetY, duration);
+      });
+    });
+  }
+
+  function showUpTo(index, { skipScroll = false, hideActiveBlocks = false } = {}) {
+    currentTurn = Math.min(index, TURNS.length);
+    const turns = turnElements();
+    // Mark turns up to currentTurn as visible
+    for (let i = 0; i < turns.length; i++) {
+      const el = turns[i];
+      if (i < currentTurn) {
+        el.classList.add("visible");
+        if (!playing) {
+          // Active turn (last visible): optionally keep blocks hidden
+          if (hideActiveBlocks && i === currentTurn - 1) {
+            hideAllBlocks(el);
+          } else {
+            revealAllBlocks(el);
+          }
+        }
+      } else {
+        collapseExpanded(el);
+        el.classList.remove("visible");
+        hideAllBlocks(el);
+      }
+    }
+    updateBookmarkVisibility();
+    updateProgress();
+    setActiveTurn(currentTurn - 1);
+
+    // Pin active turn just below the controls bar, with a peek of previous turn
+    if (!skipScroll && currentTurn > 0) {
+      const el = turns[currentTurn - 1];
+      if (el) scrollToTurn(el);
+    }
+  }
+
+  // Adaptive wait: sleeps for gapMs/speed, but reads speed LIVE every tick
+  // so changing speed mid-wait takes effect immediately.
+  function adaptiveWait(gapMs, onDone) {
+    let elapsed = 0;
+    const tickMs = 100;
+    let timer = null;
+
+    function tick() {
+      const remaining = gapMs - elapsed * speed;
+      if (remaining <= 0) {
+        onDone();
+        return;
+      }
+      elapsed += tickMs;
+      timer = setTimeout(tick, tickMs);
+    }
+
+    tick();
+    return function() { clearTimeout(timer); };
+  }
+
+  /**
+   * Progressively reveal blocks within a turn using timestamps.
+   * Reads speed live so changes take effect immediately.
+   * Returns a cancel function that instantly reveals remaining blocks.
+   */
+  function animateTurn(turnIndex, onComplete, startFrom) {
+    const turn = TURNS[turnIndex];
+    if (!turn) { onComplete(); return function(){}; }
+
+    const el = turnElements()[turnIndex];
+    if (!el) { onComplete(); return function(){}; }
+
+    const wrappers = el.querySelectorAll(".block-wrapper");
+    if (wrappers.length === 0) { onComplete(); return function(){}; }
+
+    // Rebuild segment structure to get timestamps
+    const segments = [];
+    let toolRun = [];
+    for (const block of turn.blocks) {
+      if (block.kind === "tool_use" && block.tool_call) {
+        toolRun.push(block);
+      } else {
+        if (toolRun.length > 0) { segments.push({ type: "tools", blocks: toolRun }); toolRun = []; }
+        segments.push({ type: "single", block });
+      }
+    }
+    if (toolRun.length > 0) { segments.push({ type: "tools", blocks: toolRun }); }
+
+    function getSegTs(seg) {
+      if (seg.type === "single") return seg.block.timestamp || null;
+      return (seg.blocks[0] && seg.blocks[0].timestamp) || null;
+    }
+
+    // Compute raw gaps (in real ms) between consecutive segments
+    const gaps = [0]; // first block: no wait
+    for (let si = 1; si < segments.length && si < wrappers.length; si++) {
+      const tsStr = getSegTs(segments[si]);
+      const prevTsStr = getSegTs(segments[si - 1]);
+      let gapMs;
+      if (tsStr && prevTsStr) {
+        gapMs = new Date(tsStr).getTime() - new Date(prevTsStr).getTime();
+      } else {
+        gapMs = ANIMATE_FALLBACK_DELAY;
+      }
+      gaps.push(Math.min(Math.max(gapMs, ANIMATE_MIN_DELAY), ANIMATE_MAX_DELAY));
+    }
+
+    let cancelled = false;
+    let currentWaitCancel = null;
+    let currentIdx = startFrom || 0;
+
+    function revealWrapper(idx) {
+      const w = wrappers[idx];
+      if (!w) return;
+      // Clear any previous block-active
+      const prev = el.querySelector(".block-active");
+      if (prev) prev.classList.remove("block-active");
+      w.classList.remove("block-hidden");
+      w.classList.add("block-revealing");
+      w.classList.add("block-active");
+      requestAnimationFrame(() => {
+        const barH = getControlsHeight();
+        const viewBottom = window.innerHeight - barH;
+        const wRect = w.getBoundingClientRect();
+        if (wRect.bottom > viewBottom) {
+          cancelScrollAnim();
+          const targetY = wRect.bottom + window.scrollY - viewBottom + 20;
+          window.scrollTo({ top: targetY, behavior: idx === 0 ? "smooth" : "instant" });
+        }
+      });
+    }
+
+    function revealNext() {
+      if (cancelled || currentIdx >= gaps.length) {
+        if (!cancelled) {
+          for (const a of el.querySelectorAll(".block-active")) a.classList.remove("block-active");
+          animatePausedState = null;
+          onComplete();
+        }
+        return;
+      }
+      const idx = currentIdx;
+      const gapMs = gaps[idx];
+      currentIdx++;
+
+      if (gapMs === 0) {
+        revealWrapper(idx);
+        revealNext();
+        return;
+      }
+
+      currentWaitCancel = adaptiveWait(gapMs, () => {
+        if (cancelled) return;
+        currentWaitCancel = null;
+        revealWrapper(idx);
+        revealNext();
+      });
+    }
+
+    function cancel() {
+      if (cancelled) return;
+      cancelled = true;
+      if (currentWaitCancel) { currentWaitCancel(); currentWaitCancel = null; }
+      // Freeze in place — save where we paused
+      animatePausedState = { turnIndex, blockIdx: currentIdx };
+    }
+
+    // Start the chain
+    revealNext();
+    return cancel;
+  }
+
+  // After all blocks in a turn are revealed, pause then advance
+  function dwellThenAdvance() {
+    animateCancelFn = adaptiveWait(SHORT_TURN_DELAY_MS, () => {
+      if (!playing) return;
+      animateCancelFn = null;
+      playStep();
+    });
+  }
+
+  function playStep() {
+    if (!playing) return;
+    if (currentTurn >= TURNS.length) { stopPlay(); return; }
+
+    // Show the turn container (header + user text) immediately
+    const fromSplash = currentTurn === 0;
+    showUpTo(currentTurn + 1, { skipScroll: true });
+
+    // From splash: instantly position at the first turn
+    if (fromSplash) {
+      const el = turnElements()[0];
+      if (el) {
+        const barH = getControlsHeight();
+        const viewH = window.innerHeight - barH;
+        const absBottom = el.getBoundingClientRect().bottom + window.scrollY;
+        window.scrollTo({ top: Math.max(0, absBottom - viewH + PEEK_OFFSET), behavior: "instant" });
+      }
+    }
+
+    const el = turnElements()[currentTurn - 1];
+    if (!el) { stopPlay(); return; }
+
+    // For turns with no blocks (e.g. /exit), scroll to them directly
+    const wrappers = el.querySelectorAll(".block-wrapper");
+    if (wrappers.length === 0) {
+      scrollToBottom(el);
+      dwellThenAdvance();
+      return;
+    }
+
+    // Animate blocks within the turn, then dwell before advancing
+    animateCancelFn = animateTurn(currentTurn - 1, () => {
+      animateCancelFn = null;
+      if (!playing) return;
+      dwellThenAdvance();
+    });
+  }
+
+  function startPlay() {
+    hideSplash();
+
+    if (currentTurn >= TURNS.length) {
+      // Check if the last turn still has unrevealed blocks
+      const lastEl = turnElements()[TURNS.length - 1];
+      const hasHidden = lastEl && lastEl.querySelectorAll(".block-wrapper.block-hidden").length > 0;
+      if (hasHidden) {
+        // Still have blocks to show — keep at last turn for resume logic below
+        currentTurn = TURNS.length;
+      } else {
+        // Fully played — reset to beginning
+        currentTurn = 0;
+        animatePausedState = null;
+        for (const el of transcript.children) {
+          collapseExpanded(el);
+          el.classList.remove("visible");
+        }
+        for (const w of transcript.querySelectorAll(".block-wrapper")) {
+          w.classList.add("block-hidden");
+          w.classList.remove("block-revealing");
+        }
+      }
+    }
+    playing = true;
+    startTimer();
+    btnPlay.innerHTML = "&#9646;&#9646;";
+    btnPlay.classList.add("active");
+
+    // Scroll current turn into view so it's clear playback started
+    if (currentTurn > 0) {
+      const el = turnElements()[currentTurn - 1];
+      if (el) scrollToBottom(el);
+    }
+
+    // Resume mid-turn if we paused inside a block animation
+    if (animatePausedState) {
+      const ps = animatePausedState;
+      animatePausedState = null;
+      animateCancelFn = animateTurn(ps.turnIndex, () => {
+        animateCancelFn = null;
+        if (!playing) return;
+        dwellThenAdvance();
+      }, ps.blockIdx);
+      return;
+    }
+
+    // Resume current turn based on block state
+    if (currentTurn > 0) {
+      const turnEl = turnElements()[currentTurn - 1];
+      if (turnEl) {
+        const revealed = turnEl.querySelectorAll(".block-wrapper:not(.block-hidden)").length;
+        const total = turnEl.querySelectorAll(".block-wrapper").length;
+        if (revealed < total) {
+          // Partially revealed (from block-by-block stepping): animate remaining blocks
+          animateCancelFn = animateTurn(currentTurn - 1, () => {
+            animateCancelFn = null;
+            if (!playing) return;
+            dwellThenAdvance();
+          }, revealed);
+          return;
+        }
+        if (revealed > 0 && total > 0) {
+          // Fully revealed (from scrolling): dwell then advance to next turn
+          dwellThenAdvance();
+          return;
+        }
+      }
+    }
+
+    playStep();
+  }
+
+  function stopPlay() {
+    playing = false;
+    stopTimer();
+    cancelScrollAnim();
+    btnPlay.innerHTML = "&#9654;";
+    btnPlay.classList.remove("active");
+    if (playTimer) { clearTimeout(playTimer); playTimer = null; }
+    if (animateCancelFn) { animateCancelFn(); animateCancelFn = null; }
+  }
+
+  /**
+   * Unified navigation: all manual navigation (buttons, seek, chapters, clicks)
+   * goes through here. Stops playback, clears mid-turn state, manages splash.
+   */
+  function navigate(targetTurn, opts) {
+    if (playing) stopPlay();
+    animatePausedState = null;
+    if (targetTurn <= 0) {
+      showUpTo(0);
+      showSplash();
+    } else {
+      hideSplash();
+      showUpTo(Math.min(targetTurn, TURNS.length), opts);
+    }
+  }
+
+  // Scroll just enough to keep an element visible above the controls bar
+  function scrollIntoView(el) {
+    requestAnimationFrame(() => {
+      const barH = getControlsHeight();
+      const viewBottom = window.innerHeight - barH;
+      const rect = el.getBoundingClientRect();
+      if (rect.bottom > viewBottom) {
+        cancelScrollAnim();
+        const targetY = rect.bottom + window.scrollY - viewBottom + PEEK_OFFSET;
+        window.scrollTo({ top: targetY, behavior: "smooth" });
+      } else if (rect.top < 0) {
+        cancelScrollAnim();
+        const targetY = rect.top + window.scrollY - PEEK_OFFSET;
+        window.scrollTo({ top: Math.max(0, targetY), behavior: "smooth" });
+      }
+    });
+  }
+
+  // Scroll so the element's bottom sits just above the controls bar
+  function scrollToBottom(el) {
+    requestAnimationFrame(() => {
+      const barH = getControlsHeight();
+      const viewH = window.innerHeight - barH;
+      const absBottom = el.getBoundingClientRect().bottom + window.scrollY;
+      const targetY = Math.max(0, absBottom - viewH + PEEK_OFFSET);
+      cancelScrollAnim();
+      window.scrollTo({ top: targetY, behavior: "smooth" });
+    });
+  }
+
+  function stepForward() {
+    if (playing) stopPlay();
+    animatePausedState = null;
+    scrollProtectUntil = Date.now() + 2000;
+
+    if (currentTurn === 0) {
+      // From splash: show turn 1 with blocks hidden
+      hideSplash();
+      currentTurn = 1;
+      const turns = turnElements();
+      if (turns[0]) {
+        turns[0].classList.add("visible");
+        hideAllBlocks(turns[0]);
+        scrollToBottom(turns[0]);
+      }
+      updateBookmarkVisibility();
+      updateProgress();
+      setActiveTurn(0);
+      return;
+    }
+
+    const turnEl = turnElements()[currentTurn - 1];
+    if (!turnEl) return;
+    const hiddenBlocks = turnEl.querySelectorAll(".block-wrapper.block-hidden");
+
+    if (hiddenBlocks.length > 0) {
+      // Reveal next block within current turn
+      const w = hiddenBlocks[0];
+      const prev = turnEl.querySelector(".block-active");
+      if (prev) prev.classList.remove("block-active");
+      w.classList.remove("block-hidden");
+      w.classList.add("block-revealing", "block-active");
+      syncTimerToBlock();
+      scrollIntoView(w);
+    } else if (currentTurn < TURNS.length) {
+      // All blocks revealed — advance to next turn with blocks hidden
+      const prev = turnEl.querySelector(".block-active");
+      if (prev) prev.classList.remove("block-active");
+      currentTurn++;
+      const turns = turnElements();
+      const nextEl = turns[currentTurn - 1];
+      if (nextEl) {
+        nextEl.classList.add("visible");
+        hideAllBlocks(nextEl);
+        scrollIntoView(nextEl);
+      }
+      updateBookmarkVisibility();
+      updateProgress();
+      setActiveTurn(currentTurn - 1);
+    }
+  }
+
+  function stepBack() {
+    if (playing) stopPlay();
+    animatePausedState = null;
+    scrollProtectUntil = Date.now() + 2000;
+
+    const turnEl = currentTurn > 0 ? turnElements()[currentTurn - 1] : null;
+    if (turnEl) {
+      const revealedBlocks = turnEl.querySelectorAll(".block-wrapper:not(.block-hidden)");
+      if (revealedBlocks.length > 0) {
+        // Hide last revealed block within current turn
+        const last = revealedBlocks[revealedBlocks.length - 1];
+        collapseExpanded(last);
+        last.classList.add("block-hidden");
+        last.classList.remove("block-revealing", "block-active");
+        // Scroll down to show what remains
+        const remaining = turnEl.querySelectorAll(".block-wrapper:not(.block-hidden)");
+        if (remaining.length > 0) {
+          remaining[remaining.length - 1].classList.add("block-active");
+          scrollToBottom(remaining[remaining.length - 1]);
+        } else {
+          scrollToBottom(turnEl);
+        }
+        syncTimerToBlock();
+        return;
+      }
+    }
+
+    // No blocks to hide — go to previous turn (all blocks revealed) or splash
+    if (currentTurn <= 1) {
+      navigate(0);
+    } else {
+      currentTurn--;
+      const turns = turnElements();
+      // Hide the turn we just left and close any expanded blocks
+      const leftTurn = turns[currentTurn];
+      if (leftTurn) {
+        collapseExpanded(leftTurn);
+        leftTurn.classList.remove("visible");
+      }
+      // Previous turn should have all blocks revealed
+      const prevEl = turns[currentTurn - 1];
+      if (prevEl) {
+        revealAllBlocks(prevEl);
+        scrollToBottom(prevEl);
+      }
+      updateBookmarkVisibility();
+      updateProgress();
+      setActiveTurn(currentTurn - 1);
+    }
+  }
+
+  // ═══════════════════════════════════════════
+  // § PROGRESS & NAVIGATION
+  // ═══════════════════════════════════════════
+
+  function updateProgress() {
+    const pct = Math.max(0, turnToPct(currentTurn) * 100);
+    progressFill.style.width = pct + "%";
+    // Sync timer to current position
+    syncTimerToBlock();
+    if (playing) startTimer();
+    // Update turn dot states
+    for (const dot of progressBar.querySelectorAll(".turn-dot")) {
+      const turn = parseInt(dot.dataset.turn, 10);
+      dot.classList.toggle("reached", turn <= currentTurn);
+    }
+    // Update bookmark dot states
+    let activeDot = null;
+    for (const dot of progressBar.querySelectorAll(".bookmark-dot")) {
+      const turn = parseInt(dot.dataset.turn, 10);
+      const reached = turn <= currentTurn;
+      dot.classList.toggle("reached", reached);
+      dot.classList.remove("active");
+      if (reached) activeDot = dot;
+    }
+    if (activeDot) activeDot.classList.add("active");
+  }
+
+  function updateTimerDisplay() {
+    progressText.textContent = formatTime(displayedTimeMs) + " / " + formatTime(sessionTotalMs);
+  }
+
+  function startTimer() {
+    if (timerInterval) return;
+    timerInterval = setInterval(() => {
+      // Tick forward scaled by playback speed, capped at session total
+      displayedTimeMs = Math.min(displayedTimeMs + 1000 * speed, sessionTotalMs);
+      updateTimerDisplay();
+      if (displayedTimeMs >= sessionTotalMs) stopTimer();
+    }, 1000);
+  }
+
+  /** Update timer based on fraction of blocks revealed in current turn. */
+  function syncTimerToBlock() {
+    if (sessionStart == null || currentTurn <= 0) { displayedTimeMs = 0; updateTimerDisplay(); return; }
+    const idx = currentTurn - 1;
+    const turnEl = turnElements()[idx];
+    if (!turnEl) return;
+    const total = turnEl.querySelectorAll(".block-wrapper").length;
+    const revealed = turnEl.querySelectorAll(".block-wrapper:not(.block-hidden)").length;
+    const tStart = turnStartTimes[idx] - sessionStart;
+    const tEnd = turnEndTimes[idx] - sessionStart;
+    const frac = total > 0 ? revealed / total : 0;
+    displayedTimeMs = Math.round(tStart + (tEnd - tStart) * frac);
+    updateTimerDisplay();
+  }
+
+  function stopTimer() {
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  }
+
+  function setActiveTurn(index) {
+    for (const el of $$(".turn.active")) el.classList.remove("active");
+    const turns = turnElements();
+    if (index >= 0 && index < turns.length) {
+      turns[index].classList.add("active");
+    }
+  }
+
+  function seekFromX(clientX) {
+    const rect = progressBar.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const target = pctToTurn(pct);
+    if (target <= 1 && pct < 0.05) {
+      navigate(0);
+    } else {
+      navigate(Math.max(1, target), { hideActiveBlocks: true });
+    }
+  }
+
+  // Scroll-based activation: as user scrolls down, reveal new turns
+  function onScrollUpdate() {
+    if (playing || Date.now() < scrollProtectUntil) return;
+    if (isSplashVisible()) return;
+    const turns = turnElements();
+    if (!turns.length) return;
+    const viewMid = window.innerHeight / 2;
+
+    let best = -1;
+    for (let i = 0; i < turns.length; i++) {
+      const rect = turns[i].getBoundingClientRect();
+      if (rect.top < viewMid) best = i;
+    }
+    if (best >= 0) {
+      const idx = best + 1; // 1-based
+      if (idx !== currentTurn) {
+        if (idx > currentTurn) {
+          // Scrolling forward — reveal new turns
+          currentTurn = idx;
+          for (let i = 0; i < turns.length; i++) {
+            turns[i].classList.toggle("visible", i < currentTurn);
+            if (i < currentTurn) {
+              revealAllBlocks(turns[i]);
+            }
+          }
+          updateBookmarkVisibility();
+        } else {
+          // Scrolling backward — update active turn (don't hide already-revealed turns)
+          currentTurn = idx;
+        }
+        updateProgress();
+        setActiveTurn(currentTurn - 1);
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════
+  // § UI WIRING
+  // ═══════════════════════════════════════════
+
+  // Popover management — single close-all + single document click handler
+  const popoverWraps = [speedWrap, filterWrap, chapterWrap, moreWrap].filter(Boolean);
+
+  function closeAllPopovers(exceptEl) {
+    for (const el of popoverWraps) {
+      if (exceptEl && el === exceptEl) continue;
+      el.classList.remove("open");
+    }
+  }
+
+
+  document.addEventListener("click", (e) => {
+    for (const wrap of popoverWraps) {
+      if (wrap.classList.contains("open") && wrap.contains(e.target)) return;
+    }
+    closeAllPopovers();
+  });
+
+  // Close all popovers when iframe loses focus
+  window.addEventListener("blur", () => { closeAllPopovers(); });
+
+  // Play / Step buttons
+  btnPlay.addEventListener("click", () => playing ? stopPlay() : startPlay());
+  btnNext.addEventListener("click", stepForward);
+  btnPrev.addEventListener("click", stepBack);
+  btnNextTurn.addEventListener("click", () => jumpTurn(1));
+  btnPrevTurn.addEventListener("click", () => jumpTurn(-1));
+
+  // Speed popover toggle
+  speedBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const wasOpen = speedWrap.classList.contains("open");
+    closeAllPopovers();
+    if (!wasOpen) speedWrap.classList.add("open");
+  });
+
+  // Populate speed popover with buttons
+  for (let i = SPEED_STEPS.length - 1; i >= 0; i--) { const s = SPEED_STEPS[i];
+    const btn = document.createElement("button");
+    btn.textContent = s + "x";
+    btn.dataset.speed = s;
+    if (s === speed) btn.classList.add("active");
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setSpeed(s);
+      speedWrap.classList.remove("open");
+    });
+    speedPopover.appendChild(btn);
+  }
+  // Add paced toggle to speed popover if real timestamps available
+  if (hasRealTimestamps) {
+    const pacedLabel = document.createElement("label");
+    pacedLabel.className = "paced-toggle";
+    pacedLabel.id = "paced-toggle-wrap";
+    pacedLabel.title = "Smooth out pauses — timing based on content length instead of real time";
+    pacedLabel.innerHTML = '<input type="checkbox" id="toggle-paced"> Auto-paced';
+    speedPopover.appendChild(pacedLabel);
+    const togglePacedEl = pacedLabel.querySelector("input");
+    togglePacedEl.addEventListener("change", () => {
+      togglePaced2.checked = togglePacedEl.checked;
+      switchTiming(togglePacedEl.checked);
+    });
+    // Replace the const reference
+    togglePaced = togglePacedEl;
+  }
+
+  // Filter popover toggle
+  filterBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const wasOpen = filterWrap.classList.contains("open");
+    closeAllPopovers();
+    if (!wasOpen) filterWrap.classList.add("open");
+  });
+
+  // Filter checkboxes
+  toggleThinking.addEventListener("change", applyVisibility);
+  toggleTools.addEventListener("change", applyVisibility);
+
+  // Auto-paced toggle (more menu version)
+  if (hasRealTimestamps) {
+    $("#paced-toggle-wrap2").style.display = "";
+  }
+  togglePaced2.addEventListener("change", () => {
+    if (togglePaced) togglePaced.checked = togglePaced2.checked;
+    switchTiming(togglePaced2.checked);
+  });
+
+  // Chapter popover toggle (wired in bookmarks section below)
+
+  // More menu (mobile/iframe) toggle
+  const moreOpenLink = $("#more-open-link");
+  moreBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const wasOpen = moreWrap.classList.contains("open");
+    closeAllPopovers();
+    if (!wasOpen) {
+      // Update open link with current turn position
+      const activeTurn = $(".turn.active");
+      const turnIdx = activeTurn ? parseInt(activeTurn.dataset.index, 10) : currentTurn;
+      moreOpenLink.href = location.href.replace(/#.*/, "") + "#turn=" + turnIdx;
+      moreWrap.classList.add("open");
+    }
+  });
+
+  // Sync more-popover controls with main controls
+  speedBtn2.addEventListener("click", () => {
+    const idx = SPEED_STEPS.indexOf(speed);
+    setSpeed(SPEED_STEPS[(idx + 1) % SPEED_STEPS.length]);
+  });
+
+  function syncCheckbox(primary, secondary) {
+    secondary.addEventListener("change", () => {
+      primary.checked = secondary.checked;
+      applyVisibility();
+    });
+    primary.addEventListener("change", () => {
+      secondary.checked = primary.checked;
+    });
+  }
+  syncCheckbox(toggleThinking, toggleThinking2);
+  syncCheckbox(toggleTools, toggleTools2);
+
+  // Progress bar interactions
+  progressBar.addEventListener("click", (e) => seekFromX(e.clientX));
+
+  // Touch drag on progress bar
+  progressBar.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    seekFromX(e.touches[0].clientX);
+  }, { passive: false });
+  progressBar.addEventListener("touchmove", (e) => {
+    e.preventDefault();
+    seekFromX(e.touches[0].clientX);
+  }, { passive: false });
+
+  // Progress bar hover tooltip
+  progressBar.addEventListener("mousemove", (e) => {
+    const rect = progressBar.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const turnIdx = pctToTurn(pct);
+    const turn = TURNS[turnIdx - 1];
+    let label = `#${turnIdx}`;
+    if (turn && turn.timestamp && sessionStart != null) {
+      const delta = new Date(turn.timestamp).getTime() - sessionStart;
+      label += ` · ${formatTime(delta)}`;
+    }
+    progressTooltip.textContent = label;
+    // Position tooltip, clamped to bar edges
+    const left = Math.max(20, Math.min(rect.width - 20, e.clientX - rect.left));
+    progressTooltip.style.left = left + "px";
+  });
+
+  // Expanding/collapsing sections pauses playback
+  transcript.addEventListener("click", (e) => {
+    if (playing && (e.target.closest(".turn-header") || e.target.closest(".thinking-header") || e.target.closest(".tool-header") || e.target.closest(".tool-group-header") || e.target.closest(".collapsible-toggle"))) {
+      stopPlay();
+    }
+  });
+
+  // Jump to next/prev turn (all blocks revealed)
+  function jumpTurn(dir) {
+    if (playing) stopPlay();
+    animatePausedState = null;
+    scrollProtectUntil = Date.now() + 2000;
+    const target = dir > 0
+      ? Math.min(currentTurn + 1, TURNS.length)
+      : Math.max(currentTurn - 1, 0);
+    navigate(target, { hideActiveBlocks: true });
+  }
+
+  // Track the last block highlighted by jumpBlock so we can collapse it on next jump
+  let lastJumpedBlock = null;
+
+  // Jump to next/prev thinking or tool block, expand it, collapse previous
+  function jumpBlock(dir) {
+    if (playing) stopPlay();
+    animatePausedState = null;
+    scrollProtectUntil = Date.now() + 2000;
+
+    // Collect all thinking/tool elements across all turns, respecting filter toggles
+    const showThinking = toggleThinking.checked;
+    const showTools = toggleTools.checked;
+    const allBlocks = [];
+    const turns = turnElements();
+    for (const turn of turns) {
+      for (const wrapper of turn.querySelectorAll(".block-wrapper")) {
+        if (showThinking) {
+          for (const el of wrapper.querySelectorAll('[data-type="thinking"]')) allBlocks.push(el);
+        }
+        if (showTools) {
+          for (const el of wrapper.querySelectorAll('[data-type="tool"]')) allBlocks.push(el);
+        }
+      }
+    }
+    if (allBlocks.length === 0) return;
+
+    // Find current position — either from last jumped block or infer from current turn
+    let curIdx = -1;
+    if (lastJumpedBlock) {
+      curIdx = allBlocks.indexOf(lastJumpedBlock);
+    }
+    if (curIdx < 0 && currentTurn > 0) {
+      // No previous jump — find the last block in/before the current turn
+      const curTurnEl = turns[currentTurn - 1];
+      if (curTurnEl) {
+        for (let i = allBlocks.length - 1; i >= 0; i--) {
+          if (curTurnEl.contains(allBlocks[i])) { curIdx = i; break; }
+        }
+        // If nothing in current turn, find last block before it
+        if (curIdx < 0) {
+          for (let i = allBlocks.length - 1; i >= 0; i--) {
+            const blockTurn = allBlocks[i].closest(".turn");
+            const blockTurnIdx = blockTurn ? parseInt(blockTurn.dataset.index, 10) : 0;
+            if (blockTurnIdx <= currentTurn) { curIdx = i; break; }
+          }
+        }
+      }
+    }
+
+    // Compute next index
+    let nextIdx;
+    if (dir > 0) {
+      nextIdx = curIdx < 0 ? 0 : Math.min(curIdx + 1, allBlocks.length - 1);
+    } else {
+      nextIdx = curIdx < 0 ? allBlocks.length - 1 : Math.max(curIdx - 1, 0);
+    }
+
+    const target = allBlocks[nextIdx];
+
+    // Ensure the target's turn is visible — navigate to it
+    const turnEl = target.closest(".turn");
+    if (turnEl) {
+      const turnIdx = parseInt(turnEl.dataset.index, 10);
+      if (turnIdx !== currentTurn) {
+        hideSplash();
+        showUpTo(turnIdx, { skipScroll: true });
+      }
+    }
+
+    // Collapse previous, expand target
+    if (lastJumpedBlock && lastJumpedBlock !== target) {
+      lastJumpedBlock.classList.remove("open");
+    }
+    target.classList.add("open");
+    lastJumpedBlock = target;
+
+    // Set block-active on the wrapper for visual highlight
+    const wrapper = target.closest(".block-wrapper");
+    if (wrapper) {
+      const prevActive = transcript.querySelector(".block-active");
+      if (prevActive) prevActive.classList.remove("block-active");
+      wrapper.classList.add("block-active");
+    }
+
+    scrollIntoView(target);
+  }
+
+  // Keyboard shortcuts
+  document.addEventListener("keydown", (e) => {
+    if (e.target.tagName === "INPUT") return;
+    if (e.key === " " || e.key === "k") { e.preventDefault(); playing ? stopPlay() : startPlay(); }
+    if (e.shiftKey && (e.key === "ArrowRight" || e.key === "L")) { e.preventDefault(); jumpTurn(1); return; }
+    if (e.shiftKey && (e.key === "ArrowLeft" || e.key === "H")) { e.preventDefault(); jumpTurn(-1); return; }
+    if (e.key === "ArrowRight" || e.key === "l") { e.preventDefault(); stepForward(); }
+    if (e.key === "ArrowLeft" || e.key === "h") { e.preventDefault(); stepBack(); }
+    if (e.key === "t") { e.preventDefault(); jumpBlock(1); }
+    if (e.key === "T") { e.preventDefault(); jumpBlock(-1); }
+  });
+
+  // Iframe detection — compact mode + title as pop-out link
+  let inIframe = false;
+  try { inIframe = window !== window.top; } catch (e) { inIframe = true; }
+  if (inIframe) {
+    document.body.classList.add("in-iframe");
+    barTitle.addEventListener("click", () => {
+      const activeTurn = $(".turn.active");
+      const turnIdx = activeTurn ? parseInt(activeTurn.dataset.index, 10) : currentTurn;
+      const url = location.href.replace(/#.*/, "") + "#turn=" + turnIdx;
+      window.open(url, "_blank");
+    });
+  }
+
+  // Scroll handler
+  window.addEventListener("scroll", () => {
+    if (!scrollTick) {
+      scrollTick = true;
+      requestAnimationFrame(() => {
+        onScrollUpdate();
+        scrollTick = false;
+      });
+    }
+  }, { passive: true });
+
+  // --- Turn dots on progress bar ---
+  for (let i = 0; i < TURNS.length; i++) {
+    const dot = document.createElement("div");
+    dot.className = "turn-dot";
+    dot.dataset.turn = i + 1;
+    dot.style.left = turnToPct(i + 1) * 100 + "%";
+    progressBar.appendChild(dot);
+  }
+
+  // --- Bookmarks / Chapters ---
+  if (BOOKMARKS.length > 0) {
+    chapterWrap.style.display = "";
+
+    // Bookmark dots on progress bar (pointer-events: none, clicks go through to bar)
+    for (const bm of BOOKMARKS) {
+      const dot = document.createElement("div");
+      dot.className = "bookmark-dot";
+      dot.dataset.turn = bm.turn;
+      dot.style.left = turnToPct(bm.turn) * 100 + "%";
+      progressBar.appendChild(dot);
+    }
+
+    // Chapter menu items (desktop dropdown + more-popover)
+    const moreChapters = $("#more-chapters");
+    const moreChapterList = $("#more-chapter-list");
+    moreChapters.style.display = "";
+
+    for (const bm of BOOKMARKS) {
+      const item = document.createElement("div");
+      item.className = "chapter-item";
+      item.title = bm.label;
+      item.innerHTML = `<span class="chapter-item-turn">#${bm.turn}</span><span class="chapter-item-label">${escapeHtml(bm.label)}</span>`;
+      item.addEventListener("click", () => {
+        navigate(bm.turn, { hideActiveBlocks: true });
+        chapterWrap.classList.remove("open");
+      });
+      chapterMenu.appendChild(item);
+
+      // Duplicate for more-popover
+      const item2 = document.createElement("div");
+      item2.className = "chapter-item";
+      item2.innerHTML = item.innerHTML;
+      item2.addEventListener("click", () => {
+        navigate(bm.turn, { hideActiveBlocks: true });
+        moreWrap.classList.remove("open");
+      });
+      moreChapterList.appendChild(item2);
+    }
+
+    chapterBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const wasOpen = chapterWrap.classList.contains("open");
+      closeAllPopovers();
+      if (!wasOpen) chapterWrap.classList.add("open");
+    });
+  }
+
+  // Init
+  transcript.textContent = "";
+  transcript.style.opacity = "";
+  renderAllTurns();
+  applyVisibility();
+  const hashMatch = location.hash.match(/turn=(\d+)(r)?/);
+  if (hashMatch) {
+    const startTurn = Math.min(parseInt(hashMatch[1], 10), TURNS.length);
+    const reveal = hashMatch[2] === "r";
+    if (startTurn > 0) {
+      hideSplash();
+      if (reveal) {
+        // Watch/live mode: instant scroll, no animation, suppress scroll activation
+        showUpTo(startTurn, { hideActiveBlocks: false, skipScroll: true });
+        scrollProtectUntil = Date.now() + 2000;
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            const el = turnElements()[startTurn - 1];
+            if (el) {
+              const barH = getControlsHeight();
+              const viewH = window.innerHeight - barH;
+              const target = el.querySelector(".block-wrapper:last-child") || el;
+              const absBottom = target.getBoundingClientRect().bottom + window.scrollY;
+              window.scrollTo(0, Math.max(0, absBottom - viewH + PEEK_OFFSET));
+            }
+          });
+        });
+      } else {
+        // Normal deep link: animated scroll, blocks hidden
+        showUpTo(startTurn, { hideActiveBlocks: true });
+      }
+    }
+    // else: turn=0 means splash, which is already visible
+  }
+  // else: splash is visible, currentTurn = 0, progress at 0%
+  updateProgress();
+
+  // React to hash changes (e.g. from parent editor iframe control)
+  let lastProcessedHash = location.hash;
+  window.addEventListener("hashchange", () => {
+    if (location.hash === lastProcessedHash) return;
+    lastProcessedHash = location.hash;
+    const m = location.hash.match(/turn=(\d+)(r)?/);
+    if (!m) return;
+    const target = Math.min(parseInt(m[1], 10), TURNS.length);
+    const rev = m[2] === "r";
+    if (target > 0) {
+      stopPlay();
+      hideSplash();
+      showUpTo(target, { hideActiveBlocks: !rev });
+    }
+  });
+
+  $("#splash-play").addEventListener("click", () => startPlay());
+  document.body.dataset.ready = "1";
+})();
+</script>
+</body>
+</html>
