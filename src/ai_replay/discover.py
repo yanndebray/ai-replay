@@ -49,6 +49,14 @@ def _read_summary(path: Path, max_lines: int = 30) -> str:
                         return msg[:60]
                 continue
 
+            # GitHub Copilot CLI: {"type": "user.message", "data": {"content": "..."}}
+            if obj.get("type") == "user.message":
+                data = obj.get("data") or {}
+                text = (data.get("content") or "").strip()
+                if text:
+                    return text[:60]
+                continue
+
             # Claude Code / generic format
             msg = obj.get("message", {})
             content = msg.get("content") if isinstance(msg, dict) else None
@@ -72,8 +80,39 @@ def _project_display(dir_name: str) -> str:
     return "-".join(parts[-2:]) if len(parts) > 1 else parts[0]
 
 
+def _copilot_project(path: Path, max_lines: int = 5) -> str:
+    """Derive a project name for a Copilot session from its ``session.start`` event.
+
+    Copilot names its session directories by UUID, so the working directory has
+    to come from the transcript itself rather than the path.
+    """
+    try:
+        with path.open(encoding="utf-8", errors="ignore") as fh:
+            for _ in range(max_lines):
+                line = fh.readline()
+                if not line:
+                    break
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if obj.get("type") != "session.start":
+                    continue
+                context = (obj.get("data") or {}).get("context") or {}
+                cwd = context.get("cwd")
+                if cwd:
+                    return Path(cwd).name or cwd
+                break
+    except Exception:
+        pass
+    return "(unknown)"
+
+
 def discover_sessions(limit: int = 20, home: Path | None = None) -> list[SessionInfo]:
-    """Discover recent sessions across Claude Code, Codex, and Cursor."""
+    """Discover recent sessions across Claude Code, Cursor, Codex, Pi, and Copilot."""
     home_dir = home or Path.home()
     results: list[SessionInfo] = []
 
@@ -167,6 +206,32 @@ def discover_sessions(limit: int = 20, home: Path | None = None) -> list[Session
                     mtime=stat.st_mtime,
                     size_bytes=stat.st_size,
                 ))
+
+    # ------------------------------------------------------------------
+    # GitHub Copilot CLI: ~/.copilot/session-state/<uuid>/events.jsonl
+    # (overridable via the COPILOT_CLI_DIR environment variable)
+    # ------------------------------------------------------------------
+    copilot_dir = os.environ.get("COPILOT_CLI_DIR")
+    copilot_base = (
+        Path(copilot_dir) if copilot_dir else home_dir / ".copilot"
+    ) / "session-state"
+    if copilot_base.is_dir():
+        for session_path in copilot_base.iterdir():
+            if not session_path.is_dir():
+                continue
+            events = session_path / "events.jsonl"
+            if not events.is_file():
+                continue
+            stat = events.stat()
+            if stat.st_size == 0:
+                continue
+            results.append(SessionInfo(
+                path=events,
+                agent="Copilot",
+                project=_copilot_project(events),
+                mtime=stat.st_mtime,
+                size_bytes=stat.st_size,
+            ))
 
     # Sort by most recent first, cap at limit
     results.sort(key=lambda s: s.mtime, reverse=True)

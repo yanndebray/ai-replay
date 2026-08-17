@@ -1,7 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
 
+- Add [GitHub Copilot CLI](https://github.com/github/copilot-cli) session support: the event log at `~/.copilot/session-state/<uuid>/events.jsonl` (overridable via `COPILOT_CLI_DIR`) is auto-discovered and auto-detected as the `copilot` format — no export step needed
+- Map Copilot's lowercase tool names (`bash`, `view`, `create`, `edit`, `grep`, …) to Claude-Code-style TitleCase so tool calls render with the same previews and diffs; unmapped snake_case names become TitleCase (`ask_user` → `AskUser`)
+- Render Copilot `reasoningText` as thinking blocks, and surface the error message for rejected or failed tool calls
+- Add VS Code Copilot Chat support: pass a `chatSessions/<id>.jsonl` file and it is auto-detected as the `copilot-chat` format. Unlike the other formats this is a journal (snapshot + patches) rather than an append-only transcript, so it is replayed to its final state before turns are extracted — reading it line-by-line would drop every streamed answer
+- Map VS Code tool ids (`run_in_terminal`, `copilot_readFile`, `copilot_createFile`, …) to Claude-Code-style names, using the command as typed rather than VS Code's environment-prefixed rewrite
 - Add Pi ([pi.dev](https://pi.dev)) session support: on-disk JSONL sessions under `~/.pi/agent/sessions/` (overridable via `PI_CODING_AGENT_DIR`) are auto-discovered and auto-detected as the `pi` format — no export step needed
 - Map Pi's lowercase built-in tool names (`bash`, `read`, `write`, `edit`, `grep`, `find`, `ls`) to Claude-Code-style TitleCase so tool calls render with the same previews and diffs
 - Render Pi thinking blocks as thinking blocks

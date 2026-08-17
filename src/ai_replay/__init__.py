@@ -1,6 +1,6 @@
 """
-ai-replay: Convert Claude Code, Cursor, Codex CLI, OpenCode, and Pi session
-transcripts to interactive HTML replays.
+ai-replay: Convert Claude Code, Cursor, Codex CLI, OpenCode, Pi, and GitHub
+Copilot (CLI and VS Code Chat) session transcripts to interactive HTML replays.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from .renderer import render_html
 from .resolve_session import resolve_session_path
 from .discover import discover_sessions
 
-__version__ = "0.4.2"
+__version__ = "0.5.0"
 
 VALID_THEMES = ["dark-knight", "tokyo-night", "monokai", "solarized-dark", "github-light", "dracula", "bubbles"]
 
@@ -159,6 +159,7 @@ def _build_replay(
         "Codex" if fmt == "codex"
         else "OpenCode" if fmt == "opencode"
         else "Pi" if fmt == "pi"
+        else "Copilot" if fmt in ("copilot", "copilot-chat")
         else "Assistant" if fmt == "cursor"
         else "Claude"
     )
@@ -193,8 +194,8 @@ def _build_replay(
 @click.version_option(__version__, "-v", "--version")
 @click.pass_context
 def main(ctx: click.Context) -> None:
-    """Convert Claude Code, Cursor, Codex CLI, OpenCode, and Pi session transcripts to
-    interactive HTML replays.
+    """Convert Claude Code, Cursor, Codex CLI, OpenCode, Pi, and GitHub Copilot
+    session transcripts to interactive HTML replays.
 
     \b
     Examples:

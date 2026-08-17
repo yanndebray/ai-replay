@@ -125,6 +125,39 @@ def test_discover_pi(tmp_path):
     assert "Fix the parser bug" in results[0].summary
 
 
+def test_discover_copilot(tmp_path):
+    """Copilot sessions under ~/.copilot/session-state get agent 'Copilot'."""
+    events = (
+        tmp_path / ".copilot" / "session-state"
+        / "411f3f8b-0799-4e3d-9162-0100b4b182f1" / "events.jsonl"
+    )
+    _write_jsonl_lines(events, [
+        {"type": "session.start", "id": "e1", "data": {
+            "sessionId": "411f3f8b", "producer": "copilot-agent",
+            "context": {"cwd": "/Users/me/Devel/my-project", "branch": "main"}}},
+        {"type": "user.message", "id": "e2",
+         "data": {"content": "Fix the parser bug"}},
+    ])
+
+    results = discover_sessions(home=tmp_path)
+    assert len(results) == 1
+    assert results[0].agent == "Copilot"
+    # The session directory is a UUID, so the project comes from session.start.
+    assert results[0].project == "my-project"
+    assert "Fix the parser bug" in results[0].summary
+
+
+def test_discover_copilot_skips_empty_sessions(tmp_path):
+    """A session directory with an empty events.jsonl is not listed."""
+    events = (
+        tmp_path / ".copilot" / "session-state" / "empty-session" / "events.jsonl"
+    )
+    events.parent.mkdir(parents=True, exist_ok=True)
+    events.write_text("", encoding="utf-8")
+
+    assert discover_sessions(home=tmp_path) == []
+
+
 def test_discover_no_sessions(tmp_path):
     """Returns empty list when no agent directories exist."""
     results = discover_sessions(home=tmp_path)

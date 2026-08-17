@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>ai-replay — interactive HTML replays of AI agent sessions</title>
-<meta name="description" content="Convert Claude Code, Cursor, Codex CLI, OpenCode, and Pi session transcripts into self-contained, interactive HTML replays." />
+<meta name="description" content="Convert Claude Code, Cursor, Codex CLI, OpenCode, Pi, and GitHub Copilot session transcripts into self-contained, interactive HTML replays." />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%230a1628'/%3E%3Cpath d='M38 30 L66 50 L38 70 Z' fill='%23ff7900'/%3E%3C/svg%3E" />
 <style>
   :root {
@@ -182,7 +182,7 @@
 
   <header>
     <div class="wrap">
-      <span class="pill">Claude Code · Cursor · Codex CLI · OpenCode · Pi</span>
+      <span class="pill">Claude Code · Cursor · Codex CLI · OpenCode · Pi · Copilot</span>
       <h1>Replay your <span class="grad">AI agent sessions</span><br>as interactive HTML</h1>
       <p class="sub">
         Turn a session transcript into a single self-contained HTML file you can
@@ -257,7 +257,7 @@
       <div class="wrap">
         <div class="section-head">
           <h2>What it does</h2>
-          <p>One CLI, five agent formats, zero runtime dependencies in the output.</p>
+          <p>One CLI, six agent formats, zero runtime dependencies in the output.</p>
         </div>
         <div class="features">
           <div class="feature">
@@ -267,8 +267,8 @@
           </div>
           <div class="feature">
             <div class="ico">🤖</div>
-            <h3>Five agent formats</h3>
-            <p>Reads Claude Code, Cursor, Codex CLI, Pi, and exported OpenCode sessions — auto-detecting the format for each file.</p>
+            <h3>Six agent formats</h3>
+            <p>Reads Claude Code, Cursor, Codex CLI, Pi, GitHub Copilot, and exported OpenCode sessions — auto-detecting the format for each file.</p>
           </div>
           <div class="feature">
             <div class="ico">🔒</div>
@@ -306,7 +306,7 @@
         </div>
         <p style="text-align:center; color:var(--text-dim); margin-top:18px; font-size:14px;">
           Or just run <code style="font-family:var(--mono);color:var(--text-bright)">ai-replay</code> to pick a recent session interactively.
-          Claude Code, Cursor, Codex CLI, and <a href="https://pi.dev">Pi</a> sessions are discovered automatically; OpenCode needs a one-off export.
+          Claude Code, Cursor, Codex CLI, <a href="https://pi.dev">Pi</a>, and GitHub Copilot sessions are discovered automatically; OpenCode needs a one-off export.
           See the <a href="https://github.com/yanndebray/ai-replay#readme">full README</a> for export, redaction, and serving options.
         </p>
       </div>

@@ -1,6 +1,6 @@
 # ai-replay 🎬
 
-Convert Claude Code, Cursor, Codex CLI, OpenCode, and Pi session transcripts to interactive HTML replays.
+Convert Claude Code, Cursor, Codex CLI, OpenCode, Pi, and GitHub Copilot (CLI and VS Code Chat) session transcripts to interactive HTML replays.
 
 **▶️ [See a live demo](https://yanndebray.github.io/ai-replay/demos/replay_ses_176215e90ffeY55qHgZob6CqQd.html)** — preview what a generated replay looks like before you install anything.
 
@@ -63,6 +63,53 @@ Pi's lowercase built-in tool names (`bash`, `read`, `write`, `edit`, `grep`,
 `find`, `ls`) are mapped to their Claude Code equivalents so they render with
 the same diff views and command previews. `thinking` blocks render as thinking
 blocks.
+
+### GitHub Copilot CLI
+
+The [GitHub Copilot CLI](https://github.com/github/copilot-cli) writes an event
+log to `~/.copilot/session-state/<uuid>/events.jsonl` (overridable via the
+`COPILOT_CLI_DIR` environment variable), so sessions are auto-discovered by the
+picker and parsed automatically — no export step needed:
+
+```bash
+ai-replay <session-id> -o replay.html
+```
+
+The session ID is the directory UUID; a leading fragment is enough. Because
+Copilot names its directories by UUID rather than by path, the project name
+shown in the picker comes from the `cwd` recorded in the session's
+`session.start` event.
+
+Copilot's lowercase tool names (`bash`, `view`, `create`, `edit`, `grep`, …) are
+mapped to their Claude Code equivalents so they render with the same diff views
+and command previews. Reasoning (`reasoningText`) renders as thinking blocks,
+and the harness's own system prompt is skipped.
+
+### VS Code Copilot Chat
+
+Copilot Chat inside VS Code stores each conversation as a *journal* at
+`~/Library/Application Support/Code/User/workspaceStorage/<workspace>/chatSessions/<id>.jsonl`
+(`%APPDATA%\Code\...` on Windows, `~/.config/Code/...` on Linux). Pass the file
+directly — it is auto-detected as the `copilot-chat` format:
+
+```bash
+ai-replay chatSessions/<id>.jsonl -o replay.html
+```
+
+Unlike every other supported format this is not an append-only transcript: the
+first line is a full snapshot and later lines are patches that set or append at
+a key path, so a streamed answer typically lands on a *different* line from the
+question it answers. ai-replay replays the journal to its final state before
+extracting turns.
+
+VS Code tool ids (`run_in_terminal`, `copilot_readFile`, `copilot_createFile`, …)
+are mapped to their Claude Code equivalents; MCP tools keep their descriptive
+id. Terminal commands use the command you typed rather than VS Code's
+environment-prefixed rewrite.
+
+> VS Code also writes a `GitHub.copilot-chat/transcripts/<id>.jsonl` in the same
+> Copilot CLI event format. It is often incomplete for a live session, so prefer
+> the `chatSessions/` journal.
 
 ### Interactive picker options
 
