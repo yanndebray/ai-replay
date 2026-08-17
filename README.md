@@ -89,12 +89,20 @@ and the harness's own system prompt is skipped.
 
 Copilot Chat inside VS Code stores each conversation as a *journal* at
 `~/Library/Application Support/Code/User/workspaceStorage/<workspace>/chatSessions/<id>.jsonl`
-(`%APPDATA%\Code\...` on Windows, `~/.config/Code/...` on Linux). Pass the file
-directly — it is auto-detected as the `copilot-chat` format:
+(`%APPDATA%\Code\...` on Windows, `~/.config/Code/...` on Linux). These are
+auto-discovered by the picker and listed as **Copilot Chat**, or you can pass a
+file or session ID directly:
 
 ```bash
+ai-replay <session-id> -o replay.html
 ai-replay chatSessions/<id>.jsonl -o replay.html
 ```
+
+VS Code Insiders and VSCodium are scanned too; set `VSCODE_USER_DIR` to point at
+a different `User` directory. Because `workspaceStorage` directories are opaque
+hashes, the project name shown in the picker is read from the workspace's
+`workspace.json`. VS Code creates a journal as soon as a chat panel is opened,
+so sessions with no prompt in them are skipped.
 
 Unlike every other supported format this is not an append-only transcript: the
 first line is a full snapshot and later lines are patches that set or append at

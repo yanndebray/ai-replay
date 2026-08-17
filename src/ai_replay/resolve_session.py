@@ -170,6 +170,30 @@ def resolve_session_id(
                     )
                 )
 
+    # ------------------------------------------------------------------
+    # VS Code Copilot Chat:
+    #   <config>/<app>/User/workspaceStorage/<hash>/chatSessions/<id>.jsonl
+    # Match on the file's own UUID, or a leading fragment of it.
+    # ------------------------------------------------------------------
+    from .discover import _vscode_storage_dirs, _vscode_workspace_project
+
+    for storage_base in _vscode_storage_dirs(home_dir):
+        if not storage_base.is_dir():
+            continue
+        for workspace_path in storage_base.iterdir():
+            chat_dir = workspace_path / "chatSessions"
+            if not chat_dir.is_dir():
+                continue
+            for f in chat_dir.glob("*.jsonl"):
+                if f.name == target or session_id in f.stem:
+                    matches.append(
+                        SessionMatch(
+                            path=f,
+                            project=_vscode_workspace_project(workspace_path),
+                            group="Copilot Chat",
+                        )
+                    )
+
     return matches
 
 
@@ -205,8 +229,8 @@ def resolve_session_path(session_id: str, home: Path | None = None) -> Path:
         raise FileNotFoundError(
             f"No session found matching {session_id!r}. "
             "Searched ~/.claude/projects/, ~/.cursor/projects/, "
-            "~/.codex/sessions/, ~/.pi/agent/sessions/, and "
-            "~/.copilot/session-state/"
+            "~/.codex/sessions/, ~/.pi/agent/sessions/, "
+            "~/.copilot/session-state/, and VS Code's chatSessions/"
         )
 
     if len(matches) > 1:
