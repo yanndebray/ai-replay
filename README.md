@@ -1,4 +1,4 @@
-# ai-replay
+# ai-replay 🎬
 
 Convert Claude Code, Cursor, Codex CLI, OpenCode, and Pi session transcripts to interactive HTML replays.
 

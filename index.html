@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>ai-replay — interactive HTML replays of AI agent sessions</title>
-<meta name="description" content="Convert Claude Code, Cursor, Codex CLI, and OpenCode session transcripts into self-contained, interactive HTML replays." />
+<meta name="description" content="Convert Claude Code, Cursor, Codex CLI, OpenCode, and Pi session transcripts into self-contained, interactive HTML replays." />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%230a1628'/%3E%3Cpath d='M38 30 L66 50 L38 70 Z' fill='%23ff7900'/%3E%3C/svg%3E" />
 <style>
   :root {
@@ -182,7 +182,7 @@
 
   <header>
     <div class="wrap">
-      <span class="pill">Claude Code · Cursor · Codex CLI · OpenCode</span>
+      <span class="pill">Claude Code · Cursor · Codex CLI · OpenCode · Pi</span>
       <h1>Replay your <span class="grad">AI agent sessions</span><br>as interactive HTML</h1>
       <p class="sub">
         Turn a session transcript into a single self-contained HTML file you can
@@ -222,6 +222,20 @@
             </div>
           </a>
 
+          <a class="card" href="demos/pi-019f1233-a192-7866-8237-88d52dde0e74/index.html">
+            <div class="thumb"><div class="glyph">🧭</div></div>
+            <div class="body">
+              <div class="agent">Pi</div>
+              <h3>A tour of Pi's capabilities</h3>
+              <p>A Pi session read straight from disk — no export step. Shows how thinking blocks and tool calls render from Pi's JSONL format.</p>
+              <div class="meta">
+                <span class="tag">thinking + tools</span>
+                <span class="tag">auto-discovered</span>
+              </div>
+              <span class="open">Open replay →</span>
+            </div>
+          </a>
+
           <a class="card" href="demos/claude-11b02037-1306-4e15-b456-94e75ecee12f/index.html">
             <div class="thumb"><div class="glyph">💬</div></div>
             <div class="body">
@@ -235,19 +249,6 @@
             </div>
           </a>
 
-          <a class="card" href="demos/claude-37ed2e27-175b-4a55-a6de-6fb3418059d4/index.html">
-            <div class="thumb"><div class="glyph">👋</div></div>
-            <div class="body">
-              <div class="agent">Claude Code</div>
-              <h3>Minimal “hello” session</h3>
-              <p>The smallest possible replay — a single turn. Useful as a baseline for what a generated file looks like.</p>
-              <div class="meta">
-                <span class="tag">1 turn</span>
-              </div>
-              <span class="open">Open replay →</span>
-            </div>
-          </a>
-
         </div>
       </div>
     </section>
@@ -256,7 +257,7 @@
       <div class="wrap">
         <div class="section-head">
           <h2>What it does</h2>
-          <p>One CLI, four agent formats, zero runtime dependencies in the output.</p>
+          <p>One CLI, five agent formats, zero runtime dependencies in the output.</p>
         </div>
         <div class="features">
           <div class="feature">
@@ -266,8 +267,8 @@
           </div>
           <div class="feature">
             <div class="ico">🤖</div>
-            <h3>Four agent formats</h3>
-            <p>Reads Claude Code, Cursor, Codex CLI, and exported OpenCode sessions — auto-detecting the format for each file.</p>
+            <h3>Five agent formats</h3>
+            <p>Reads Claude Code, Cursor, Codex CLI, Pi, and exported OpenCode sessions — auto-detecting the format for each file.</p>
           </div>
           <div class="feature">
             <div class="ico">🔒</div>
@@ -305,7 +306,8 @@
         </div>
         <p style="text-align:center; color:var(--text-dim); margin-top:18px; font-size:14px;">
           Or just run <code style="font-family:var(--mono);color:var(--text-bright)">ai-replay</code> to pick a recent session interactively.
-          See the <a href="https://github.com/yanndebray/ai-replay#readme">full README</a> for OpenCode export, redaction, and serving options.
+          Claude Code, Cursor, Codex CLI, and <a href="https://pi.dev">Pi</a> sessions are discovered automatically; OpenCode needs a one-off export.
+          See the <a href="https://github.com/yanndebray/ai-replay#readme">full README</a> for export, redaction, and serving options.
         </p>
       </div>
     </section>
