@@ -6,6 +6,7 @@ Ports src/resolve-session.mjs from the Node.js implementation.
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -120,6 +121,27 @@ def resolve_session_id(
                                 )
                             )
 
+    # ------------------------------------------------------------------
+    # Pi: ~/.pi/agent/sessions/--<cwd>--/<timestamp>_<uuid>.jsonl
+    # Match by exact filename, or by the UUID portion after the timestamp prefix.
+    # (overridable via the PI_CODING_AGENT_DIR environment variable)
+    # ------------------------------------------------------------------
+    pi_dir = os.environ.get("PI_CODING_AGENT_DIR")
+    pi_base = (Path(pi_dir) if pi_dir else home_dir / ".pi" / "agent") / "sessions"
+    if pi_base.is_dir():
+        for proj_path in pi_base.iterdir():
+            if not proj_path.is_dir():
+                continue
+            for f in proj_path.glob("*.jsonl"):
+                stem = f.stem
+                uuid_part = stem.split("_", 1)[1] if "_" in stem else stem
+                if f.name == target or session_id in uuid_part:
+                    parts = proj_path.name.strip("-").split("-")
+                    display_name = "-".join(parts[-2:]) if len(parts) > 1 else parts[0]
+                    matches.append(
+                        SessionMatch(path=f, project=display_name, group="Pi")
+                    )
+
     return matches
 
 
@@ -154,7 +176,8 @@ def resolve_session_path(session_id: str, home: Path | None = None) -> Path:
     if len(matches) == 0:
         raise FileNotFoundError(
             f"No session found matching {session_id!r}. "
-            "Searched ~/.claude/projects/, ~/.cursor/projects/, and ~/.codex/sessions/"
+            "Searched ~/.claude/projects/, ~/.cursor/projects/, "
+            "~/.codex/sessions/, and ~/.pi/agent/sessions/"
         )
 
     if len(matches) > 1:

@@ -1,10 +1,11 @@
 """
-Discover recent sessions across all supported agents (Claude Code, Codex, Cursor).
+Discover recent sessions across all supported agents (Claude Code, Codex, Cursor, Pi).
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -146,6 +147,26 @@ def discover_sessions(limit: int = 20, home: Path | None = None) -> list[Session
                             mtime=stat.st_mtime,
                             size_bytes=stat.st_size,
                         ))
+
+    # ------------------------------------------------------------------
+    # Pi: ~/.pi/agent/sessions/--<cwd>--/<timestamp>_<uuid>.jsonl
+    # (overridable via the PI_CODING_AGENT_DIR environment variable)
+    # ------------------------------------------------------------------
+    pi_dir = os.environ.get("PI_CODING_AGENT_DIR")
+    pi_base = (Path(pi_dir) if pi_dir else home_dir / ".pi" / "agent") / "sessions"
+    if pi_base.is_dir():
+        for proj_path in pi_base.iterdir():
+            if not proj_path.is_dir():
+                continue
+            for f in proj_path.glob("*.jsonl"):
+                stat = f.stat()
+                results.append(SessionInfo(
+                    path=f,
+                    agent="Pi",
+                    project=_project_display(proj_path.name.strip("-")),
+                    mtime=stat.st_mtime,
+                    size_bytes=stat.st_size,
+                ))
 
     # Sort by most recent first, cap at limit
     results.sort(key=lambda s: s.mtime, reverse=True)

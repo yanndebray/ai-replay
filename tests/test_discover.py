@@ -106,6 +106,25 @@ def test_discover_codex_summary_extraction(tmp_path):
     assert "My request for Codex" not in results[0].summary
 
 
+def test_discover_pi(tmp_path):
+    """Pi sessions under ~/.pi/agent/sessions are discovered with agent 'Pi'."""
+    pi_file = (
+        tmp_path / ".pi" / "agent" / "sessions" / "--Users-me-Devel-my-project--"
+        / "2026-06-29T07-06-41-426Z_019f1233.jsonl"
+    )
+    _write_jsonl_lines(pi_file, [
+        {"type": "session", "version": 3, "id": "019f1233", "cwd": "/Users/me/Devel/my-project"},
+        {"type": "message", "id": "m1", "message": {
+            "role": "user", "content": [{"type": "text", "text": "Fix the parser bug"}]}},
+    ])
+
+    results = discover_sessions(home=tmp_path)
+    assert len(results) == 1
+    assert results[0].agent == "Pi"
+    assert results[0].project == "my-project"
+    assert "Fix the parser bug" in results[0].summary
+
+
 def test_discover_no_sessions(tmp_path):
     """Returns empty list when no agent directories exist."""
     results = discover_sessions(home=tmp_path)

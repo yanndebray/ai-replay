@@ -1,5 +1,5 @@
 """
-Parse Claude Code, Cursor, and Codex CLI JSONL transcripts into structured turns.
+Parse Claude Code, Cursor, Codex CLI, OpenCode, and Pi JSONL transcripts into structured turns.
 
 Ported from parser.mjs (JavaScript) to Python 3.10+.
 
@@ -149,7 +149,7 @@ def _detect_format_from_text(text: str) -> str:
     Detect transcript format by peeking at the first parseable JSON line.
 
     Returns one of: ``"claude"``, ``"cursor"``, ``"codex"``, ``"opencode"``,
-    ``"replay"``, or ``"unknown"``.
+    ``"pi"``, ``"replay"``, or ``"unknown"``.
     """
     # OpenCode export is a single (often pretty-printed) JSON object, so it must
     # be detected from the whole text before the line-by-line JSONL scan.
@@ -172,6 +172,15 @@ def _detect_format_from_text(text: str) -> str:
             return "replay"
         if obj.get("type") == "session_meta":
             return "codex"
+        # Pi: session header ``{"type":"session","version":..,"cwd":..}`` or a
+        # ``{"type":"message","message":{"role":...}}`` entry. Pi nests ``role``
+        # under ``message`` (Claude puts ``type`` at top level), so these never
+        # collide with the Claude/Cursor checks below.
+        if obj.get("type") == "session" and ("cwd" in obj or "version" in obj):
+            return "pi"
+        if obj.get("type") == "message" and isinstance(obj.get("message"), dict):
+            if obj["message"].get("role") in ("user", "assistant", "toolResult"):
+                return "pi"
         if obj.get("type") in ("user", "assistant"):
             return "claude"
         if obj.get("role") in ("user", "assistant"):
@@ -183,7 +192,7 @@ def detect_format(file_path: Path | str) -> str:
     """Detect the session format of a JSONL file.
 
     Returns one of: ``"claude"``, ``"cursor"``, ``"codex"``, ``"opencode"``,
-    ``"replay"``, or ``"unknown"``.
+    ``"pi"``, ``"replay"``, or ``"unknown"``.
     """
     text = Path(file_path).read_text(encoding="utf-8")
     return _detect_format_from_text(text)
@@ -951,6 +960,179 @@ def _parse_opencode_format(export: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
+# Pi format parser
+# ---------------------------------------------------------------------------
+
+
+# Pi (https://pi.dev) uses lowercase tool names; the player template renders
+# rich previews/diffs only for Claude-Code-style TitleCase names, so we map the
+# built-in tools (bash, read, edit, write, grep, find, ls) here.
+_PI_TOOL_MAP = {
+    "bash": "Bash",
+    "read": "Read",
+    "write": "Write",
+    "edit": "Edit",
+    "grep": "Grep",
+    "find": "Glob",
+    "ls": "Glob",
+}
+
+
+def _normalize_pi_tool_input(name: str, inp: dict[str, Any]) -> dict[str, Any]:
+    """Map Pi tool input keys to the Claude-Code-style keys the player expects.
+
+    Pi's built-ins use ``path`` (read/write/edit/find/grep/ls), ``oldText`` /
+    ``newText`` (edit) and ``command`` (bash).
+    """
+    if not isinstance(inp, dict):
+        return {"raw": inp}
+    if name == "Read" and inp.get("path"):
+        return {"file_path": inp["path"]}
+    if name == "Write" and inp.get("path"):
+        return {"file_path": inp["path"], "content": inp.get("content") or ""}
+    if name == "Edit" and inp.get("path"):
+        normalized = {"file_path": inp["path"]}
+        if inp.get("oldText") is not None:
+            normalized["old_string"] = inp["oldText"]
+        if inp.get("newText") is not None:
+            normalized["new_string"] = inp["newText"]
+        if inp.get("replaceAll") is not None:
+            normalized["replace_all"] = inp["replaceAll"]
+        return normalized
+    if name == "Glob" and inp.get("path") and not inp.get("pattern"):
+        # ``ls`` lists a directory; surface the path as the glob pattern.
+        return {"pattern": inp["path"]}
+    return inp
+
+
+def _pi_result_text(content: Any) -> str:
+    """Flatten a Pi message ``content`` value into plain text."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(
+            p.get("text", "")
+            for p in content
+            if isinstance(p, dict) and p.get("type") == "text"
+        )
+    if content is None:
+        return ""
+    return str(content)
+
+
+def _parse_pi_format(entries: list[dict]) -> list[dict[str, Any]]:
+    """Parse Pi JSONL session entries into turn dicts.
+
+    Pi stores one JSON object per line, linked by ``id`` / ``parentId``. We walk
+    them in file order. A ``message`` entry with ``message.role == "user"``
+    starts a new turn; ``assistant`` messages contribute text / thinking /
+    tool_use blocks; ``toolResult`` messages attach their output to the matching
+    ``toolCall`` by ``toolCallId``. Non-message entries (session header,
+    model_change, thinking_level_change, label, compaction, custom) are ignored.
+    """
+    turns: list[dict[str, Any]] = []
+    turn_index = 0
+    current_user_text = ""
+    current_timestamp = ""
+    current_blocks: list[dict[str, Any]] = []
+    pending: dict[str, dict[str, Any]] = {}
+    in_turn = False
+
+    def _finalize() -> None:
+        nonlocal turn_index, current_user_text, current_timestamp
+        nonlocal current_blocks, pending, in_turn
+        if in_turn and (current_user_text or current_blocks):
+            turn_index += 1
+            turns.append(
+                _make_turn(
+                    turn_index, current_user_text, current_blocks, current_timestamp
+                )
+            )
+        current_user_text = ""
+        current_timestamp = ""
+        current_blocks = []
+        pending = {}
+        in_turn = False
+
+    for entry in entries:
+        if entry.get("type") != "message":
+            continue
+        msg = entry.get("message") or {}
+        role = msg.get("role")
+        ts: str | None = entry.get("timestamp")
+        content = msg.get("content")
+
+        if role == "user":
+            _finalize()
+            in_turn = True
+            current_timestamp = ts or ""
+            text_parts = [
+                (b.get("text") or "").strip()
+                for b in (content if isinstance(content, list) else [])
+                if isinstance(b, dict) and b.get("type") == "text"
+            ]
+            current_user_text = _clean_system_tags(
+                "\n".join(t for t in text_parts if t)
+            )
+            continue
+
+        if role == "assistant":
+            if not in_turn:
+                in_turn = True
+                current_timestamp = ts or ""
+            for block in content if isinstance(content, list) else []:
+                if not isinstance(block, dict):
+                    continue
+                btype = block.get("type")
+
+                if btype == "text":
+                    text = (block.get("text") or "").strip()
+                    if text:
+                        current_blocks.append(_make_block("text", text=text, timestamp=ts))
+
+                elif btype == "thinking":
+                    text = (block.get("thinking") or "").strip()
+                    if text:
+                        current_blocks.append(
+                            _make_block("thinking", text=text, timestamp=ts)
+                        )
+
+                elif btype == "toolCall":
+                    raw_name = block.get("name") or "unknown"
+                    name = _PI_TOOL_MAP.get(
+                        raw_name, raw_name[:1].upper() + raw_name[1:]
+                    )
+                    inp = _normalize_pi_tool_input(name, block.get("arguments") or {})
+                    tc = _make_tool_call(
+                        tool_use_id=block.get("id") or "",
+                        name=name,
+                        inp=inp,
+                    )
+                    current_blocks.append(
+                        _make_block("tool_use", tool_call=tc, timestamp=ts)
+                    )
+                    if tc["tool_use_id"]:
+                        pending[tc["tool_use_id"]] = tc
+            continue
+
+        if role == "toolResult":
+            tid = msg.get("toolCallId") or ""
+            tc = pending.get(tid)
+            if tc is not None:
+                tc["result"] = _pi_result_text(content).strip()
+                tc["result_timestamp"] = ts
+                tc["is_error"] = bool(msg.get("isError"))
+                del pending[tid]
+            continue
+
+    _finalize()
+
+    for j, t in enumerate(turns):
+        t["index"] = j + 1
+    return turns
+
+
+# ---------------------------------------------------------------------------
 # Replay format parser
 # ---------------------------------------------------------------------------
 
@@ -1110,7 +1292,7 @@ def parse_session(
     """
     Parse a JSONL transcript file and return a list of turn dicts.
 
-    The format (Claude Code, Cursor, Codex, OpenCode, or Replay) is detected
+    The format (Claude Code, Cursor, Codex, OpenCode, Pi, or Replay) is detected
     automatically.  When *paced_timing* is ``True`` the timestamps are replaced
     with synthetic timing based on content length.
 
@@ -1156,6 +1338,8 @@ def parse_session(
     match fmt:
         case "codex":
             turns = _parse_codex_format(parsed_lines)
+        case "pi":
+            turns = _parse_pi_format(parsed_lines)
         case "replay":
             turns = _parse_replay_format(parsed_lines)
         case "cursor":
