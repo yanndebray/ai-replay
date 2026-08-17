@@ -6,6 +6,10 @@
 - Map Pi's lowercase built-in tool names (`bash`, `read`, `write`, `edit`, `grep`, `find`, `ls`) to Claude-Code-style TitleCase so tool calls render with the same previews and diffs
 - Render Pi thinking blocks as thinking blocks
 
+## 0.4.2
+
+- Make the CI release step idempotent so re-runs don't fail when the GitHub release already exists
+
 ## 0.3.0
 
 - Add OpenCode session support: export a session with `opencode export <sessionID> > session.json` and pass it to `ai-replay` (auto-detected as the `opencode` format)
