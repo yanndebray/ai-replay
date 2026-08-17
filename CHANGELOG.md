@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1
+
+- Discover VS Code Copilot Chat sessions in the interactive picker, listed as `Copilot Chat`. Previously the format could be parsed but only by passing a file path, so these sessions never appeared in the session history
+- Resolve VS Code Copilot Chat sessions by session ID or a leading fragment
+- Scan `Code`, `Code - Insiders` and `VSCodium`, overridable via `VSCODE_USER_DIR`; read the project name from the workspace's `workspace.json` rather than the opaque storage hash, and skip prompt-less journals (VS Code writes one as soon as a chat panel is opened)
+
 ## 0.5.0
 
 - Add [GitHub Copilot CLI](https://github.com/github/copilot-cli) session support: the event log at `~/.copilot/session-state/<uuid>/events.jsonl` (overridable via `COPILOT_CLI_DIR`) is auto-discovered and auto-detected as the `copilot` format — no export step needed

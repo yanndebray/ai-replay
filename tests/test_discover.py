@@ -158,6 +158,102 @@ def test_discover_copilot_skips_empty_sessions(tmp_path):
     assert discover_sessions(home=tmp_path) == []
 
 
+def _write_vscode_chat(tmp_path, workspace_hash, session_id, folder, lines):
+    """Create a VS Code workspaceStorage chat session under *tmp_path*."""
+    ws = tmp_path / "vscode" / "workspaceStorage" / workspace_hash
+    (ws / "chatSessions").mkdir(parents=True, exist_ok=True)
+    if folder is not None:
+        (ws / "workspace.json").write_text(
+            json.dumps({"folder": folder}), encoding="utf-8"
+        )
+    path = ws / "chatSessions" / f"{session_id}.jsonl"
+    _write_jsonl_lines(path, lines)
+    return path
+
+
+def test_discover_vscode_copilot_chat(tmp_path, monkeypatch):
+    """VS Code chat journals are discovered with agent 'Copilot Chat'."""
+    monkeypatch.setenv("VSCODE_USER_DIR", str(tmp_path / "vscode"))
+    _write_vscode_chat(
+        tmp_path, "abc123hash", "269919a7-c82d-45ba-b595-5d26d3cd995b",
+        "file:///Users/me/Devel/my-project",
+        [
+            {"kind": 0, "v": {"sessionId": "269919a7", "requests": []}},
+            {"kind": 2, "k": ["requests"], "v": [
+                {"requestId": "r1", "message": {"text": "hellp"}, "response": []}]},
+        ],
+    )
+
+    results = discover_sessions(home=tmp_path)
+    assert len(results) == 1
+    assert results[0].agent == "Copilot Chat"
+    # workspaceStorage dirs are opaque hashes; the name comes from workspace.json.
+    assert results[0].project == "my-project"
+    assert results[0].summary == "hellp"
+
+
+def test_discover_vscode_chat_prompt_in_snapshot(tmp_path, monkeypatch):
+    """A prompt living in the opening kind-0 snapshot is found too."""
+    monkeypatch.setenv("VSCODE_USER_DIR", str(tmp_path / "vscode"))
+    _write_vscode_chat(
+        tmp_path, "hash2", "sess-2", "file:///Users/me/Devel/other",
+        [{"kind": 0, "v": {"sessionId": "s2", "requests": [
+            {"requestId": "r1", "message": {"text": "in the snapshot"}}]}}],
+    )
+
+    results = discover_sessions(home=tmp_path)
+    assert len(results) == 1
+    assert results[0].summary == "in the snapshot"
+
+
+def test_discover_vscode_chat_skips_empty_sessions(tmp_path, monkeypatch):
+    """VS Code writes a journal as soon as a panel opens; those are skipped."""
+    monkeypatch.setenv("VSCODE_USER_DIR", str(tmp_path / "vscode"))
+    _write_vscode_chat(
+        tmp_path, "hash3", "empty-session", "file:///Users/me/Devel/proj",
+        [{"kind": 0, "v": {"sessionId": "s3", "requests": []}}],
+    )
+
+    assert discover_sessions(home=tmp_path) == []
+
+
+def test_discover_vscode_chat_without_workspace_json(tmp_path, monkeypatch):
+    """A workspace with no workspace.json still lists, with an unknown project."""
+    monkeypatch.setenv("VSCODE_USER_DIR", str(tmp_path / "vscode"))
+    _write_vscode_chat(
+        tmp_path, "hash4", "sess-4", None,
+        [{"kind": 0, "v": {"sessionId": "s4", "requests": [
+            {"requestId": "r1", "message": {"text": "no metadata"}}]}}],
+    )
+
+    results = discover_sessions(home=tmp_path)
+    assert len(results) == 1
+    assert results[0].project == "(unknown)"
+
+
+def test_discover_does_not_escape_overridden_home(tmp_path, monkeypatch):
+    """With no explicit override, the scan stays inside the given home directory.
+
+    Guards against XDG_CONFIG_HOME / APPDATA pointing the scan at the
+    developer's real VS Code storage during a test run.
+    """
+    # A populated VS Code layout sitting where XDG_CONFIG_HOME / APPDATA point.
+    chat_dir = tmp_path / "config" / "Code" / "User" / "workspaceStorage" / "h6" / "chatSessions"
+    chat_dir.mkdir(parents=True)
+    _write_jsonl_lines(
+        chat_dir / "leaked.jsonl",
+        [{"kind": 0, "v": {"sessionId": "s6", "requests": [
+            {"requestId": "r1", "message": {"text": "should not appear"}}]}}],
+    )
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.setenv("APPDATA", str(tmp_path / "config"))
+    monkeypatch.delenv("VSCODE_USER_DIR", raising=False)
+
+    home = tmp_path / "elsewhere"
+    home.mkdir()
+    assert discover_sessions(home=home) == []
+
+
 def test_discover_no_sessions(tmp_path):
     """Returns empty list when no agent directories exist."""
     results = discover_sessions(home=tmp_path)
