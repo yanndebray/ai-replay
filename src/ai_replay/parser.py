@@ -1,5 +1,6 @@
 """
-Parse Claude Code, Cursor, Codex CLI, OpenCode, and Pi JSONL transcripts into structured turns.
+Parse Claude Code, Cursor, Codex CLI, OpenCode, Pi, GitHub Copilot CLI, and
+VS Code Copilot Chat JSONL transcripts into structured turns.
 
 Ported from parser.mjs (JavaScript) to Python 3.10+.
 
@@ -149,7 +150,7 @@ def _detect_format_from_text(text: str) -> str:
     Detect transcript format by peeking at the first parseable JSON line.
 
     Returns one of: ``"claude"``, ``"cursor"``, ``"codex"``, ``"opencode"``,
-    ``"pi"``, ``"replay"``, or ``"unknown"``.
+    ``"pi"``, ``"copilot"``, ``"copilot-chat"``, ``"replay"``, or ``"unknown"``.
     """
     # OpenCode export is a single (often pretty-printed) JSON object, so it must
     # be detected from the whole text before the line-by-line JSONL scan.
@@ -172,6 +173,22 @@ def _detect_format_from_text(text: str) -> str:
             return "replay"
         if obj.get("type") == "session_meta":
             return "codex"
+        # GitHub Copilot CLI: dotted event names in a ``{type, data, ...}``
+        # envelope. ``session.start`` carries ``producer: "copilot-agent"``.
+        # The dotted names never collide with Pi's ``session`` / ``message`` or
+        # Claude's ``user`` / ``assistant``.
+        if obj.get("type") in _COPILOT_EVENT_TYPES and isinstance(
+            obj.get("data"), dict
+        ):
+            return "copilot"
+        # VS Code Copilot Chat: a journal of {kind, k, v} entries. ``kind 0`` is
+        # the opening snapshot and carries the session's ``requests`` array.
+        if obj.get("kind") == 0 and isinstance(obj.get("v"), dict):
+            snapshot = obj["v"]
+            if "requests" in snapshot and (
+                "sessionId" in snapshot or "responderUsername" in snapshot
+            ):
+                return "copilot-chat"
         # Pi: session header ``{"type":"session","version":..,"cwd":..}`` or a
         # ``{"type":"message","message":{"role":...}}`` entry. Pi nests ``role``
         # under ``message`` (Claude puts ``type`` at top level), so these never
@@ -192,7 +209,7 @@ def detect_format(file_path: Path | str) -> str:
     """Detect the session format of a JSONL file.
 
     Returns one of: ``"claude"``, ``"cursor"``, ``"codex"``, ``"opencode"``,
-    ``"pi"``, ``"replay"``, or ``"unknown"``.
+    ``"pi"``, ``"copilot"``, ``"copilot-chat"``, ``"replay"``, or ``"unknown"``.
     """
     text = Path(file_path).read_text(encoding="utf-8")
     return _detect_format_from_text(text)
@@ -1133,6 +1150,525 @@ def _parse_pi_format(entries: list[dict]) -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
+# GitHub Copilot CLI parser
+# ---------------------------------------------------------------------------
+
+# Envelope event types emitted by the Copilot CLI agent into ``events.jsonl``.
+# Used for format detection when a file does not start with ``session.start``
+# (e.g. a hand-trimmed excerpt).
+_COPILOT_EVENT_TYPES = {
+    "session.start",
+    "session.shutdown",
+    "session.model_change",
+    "user.message",
+    "assistant.message",
+    "assistant.turn_start",
+    "assistant.turn_end",
+    "tool.execution_start",
+    "tool.execution_complete",
+}
+
+_COPILOT_TOOL_MAP = {
+    "bash": "Bash",
+    "shell": "Bash",
+    "view": "Read",
+    "read": "Read",
+    "create": "Write",
+    "write": "Write",
+    "edit": "Edit",
+    "str_replace": "Edit",
+    "grep": "Grep",
+    "search": "Grep",
+    "glob": "Glob",
+    "find": "Glob",
+    "ls": "Glob",
+    "fetch": "WebFetch",
+}
+
+
+def _normalize_copilot_tool_input(name: str, inp: dict[str, Any]) -> dict[str, Any]:
+    """Map Copilot CLI tool arguments to the Claude-Code-style keys the player expects.
+
+    Copilot's built-ins use ``path`` (view/create/edit) and ``command`` (bash).
+    ``bash`` already matches Claude's ``command`` / ``description`` keys, so it
+    passes through untouched.
+    """
+    if not isinstance(inp, dict):
+        return {"raw": inp}
+    if name == "Read" and inp.get("path"):
+        return {"file_path": inp["path"]}
+    if name == "Write" and inp.get("path"):
+        return {"file_path": inp["path"], "content": inp.get("content") or ""}
+    if name == "Edit" and inp.get("path"):
+        normalized = {"file_path": inp["path"]}
+        if inp.get("oldStr") is not None:
+            normalized["old_string"] = inp["oldStr"]
+        if inp.get("newStr") is not None:
+            normalized["new_string"] = inp["newStr"]
+        return normalized
+    if name == "Glob" and inp.get("path") and not inp.get("pattern"):
+        return {"pattern": inp["path"]}
+    return inp
+
+
+def _copilot_tool_name(raw_name: str) -> str:
+    """Map a Copilot tool name to its Claude-Code-style equivalent.
+
+    Unmapped names are converted from ``snake_case`` to ``TitleCase`` so a tool
+    like ``ask_user`` renders as ``AskUser`` rather than ``Ask_user``.
+    """
+    if not raw_name:
+        return "unknown"
+    mapped = _COPILOT_TOOL_MAP.get(raw_name)
+    if mapped:
+        return mapped
+    return "".join(part[:1].upper() + part[1:] for part in raw_name.split("_") if part)
+
+
+def _copilot_result_text(data: dict[str, Any]) -> str:
+    """Flatten a Copilot ``tool.execution_complete`` payload into plain text.
+
+    Successful calls carry a ``result`` with both a short ``content`` and a
+    longer ``detailedContent``; prefer whichever is richer so the player shows
+    the full tool output. Failed calls carry no ``result`` at all — only an
+    ``error`` object — so fall back to its message.
+    """
+    result = data.get("result")
+    if isinstance(result, str):
+        return result
+    if isinstance(result, dict):
+        content = result.get("content") or ""
+        detailed = result.get("detailedContent") or ""
+        pick = detailed if len(detailed) > len(content) else content
+        if pick:
+            return pick if isinstance(pick, str) else str(pick)
+    error = data.get("error")
+    if isinstance(error, dict):
+        message = error.get("message") or ""
+        code = error.get("code")
+        if message and code:
+            return f"{message} ({code})"
+        return str(message or code or "")
+    if isinstance(error, str):
+        return error
+    if result is None:
+        return ""
+    return str(result)
+
+
+def _parse_copilot_format(events: list[dict]) -> list[dict[str, Any]]:
+    """Parse GitHub Copilot CLI ``events.jsonl`` entries into turn dicts.
+
+    The Copilot CLI writes one event per line, each wrapped in a
+    ``{type, data, id, timestamp, parentId}`` envelope. Events are walked in
+    file order:
+
+    * ``user.message`` starts a new turn (``data.content`` is the raw prompt;
+      ``data.transformedContent`` is the same text with system reminders
+      injected, so it is ignored).
+    * ``assistant.message`` contributes a thinking block (``data.reasoningText``),
+      a text block (``data.content``) and one ``tool_use`` block per entry in
+      ``data.toolRequests``. Long responses are split across several events via
+      ``chunkIndex`` / ``chunkCount``, but each event carries its own complete
+      text, so they simply append in order.
+    * ``tool.execution_complete`` attaches output to the matching call by
+      ``toolCallId``.
+
+    Session bookkeeping events (``session.*``, ``assistant.turn_*``,
+    ``permission.*``, and the ``system.message`` harness prompt) are ignored.
+    """
+    turns: list[dict[str, Any]] = []
+    turn_index = 0
+    current_user_text = ""
+    current_timestamp = ""
+    current_blocks: list[dict[str, Any]] = []
+    pending: dict[str, dict[str, Any]] = {}
+    in_turn = False
+
+    def _finalize() -> None:
+        nonlocal turn_index, current_user_text, current_timestamp
+        nonlocal current_blocks, pending, in_turn
+        if in_turn and (current_user_text or current_blocks):
+            turn_index += 1
+            turns.append(
+                _make_turn(
+                    turn_index, current_user_text, current_blocks, current_timestamp
+                )
+            )
+        current_user_text = ""
+        current_timestamp = ""
+        current_blocks = []
+        pending = {}
+        in_turn = False
+
+    def _add_tool_call(
+        call_id: str, raw_name: str, args: Any, ts: str | None
+    ) -> None:
+        name = _copilot_tool_name(raw_name)
+        inp = _normalize_copilot_tool_input(name, args or {})
+        tc = _make_tool_call(tool_use_id=call_id, name=name, inp=inp)
+        current_blocks.append(_make_block("tool_use", tool_call=tc, timestamp=ts))
+        if call_id:
+            pending[call_id] = tc
+
+    for event in events:
+        etype = event.get("type")
+        data = event.get("data")
+        if not isinstance(data, dict):
+            continue
+        ts: str | None = event.get("timestamp")
+
+        if etype == "user.message":
+            _finalize()
+            in_turn = True
+            current_timestamp = ts or ""
+            current_user_text = _clean_system_tags((data.get("content") or "").strip())
+            continue
+
+        if etype == "assistant.message":
+            if not in_turn:
+                in_turn = True
+                current_timestamp = ts or ""
+
+            reasoning = (data.get("reasoningText") or "").strip()
+            if reasoning:
+                current_blocks.append(
+                    _make_block("thinking", text=reasoning, timestamp=ts)
+                )
+
+            text = (data.get("content") or "").strip()
+            if text:
+                current_blocks.append(_make_block("text", text=text, timestamp=ts))
+
+            for req in data.get("toolRequests") or []:
+                if not isinstance(req, dict):
+                    continue
+                _add_tool_call(
+                    req.get("toolCallId") or "",
+                    req.get("name") or "unknown",
+                    req.get("arguments"),
+                    ts,
+                )
+            continue
+
+        if etype == "tool.execution_start":
+            # The call is normally already declared by the preceding
+            # ``assistant.message``; only synthesise a block when it is not,
+            # so a trimmed transcript still renders its tool calls.
+            call_id = data.get("toolCallId") or ""
+            if call_id and call_id in pending:
+                continue
+            if not in_turn:
+                in_turn = True
+                current_timestamp = ts or ""
+            _add_tool_call(
+                call_id, data.get("toolName") or "unknown", data.get("arguments"), ts
+            )
+            continue
+
+        if etype == "tool.execution_complete":
+            tc = pending.get(data.get("toolCallId") or "")
+            if tc is not None:
+                tc["result"] = _copilot_result_text(data).strip()
+                tc["result_timestamp"] = ts
+                tc["is_error"] = data.get("success") is False
+            continue
+
+    _finalize()
+
+    for j, t in enumerate(turns):
+        t["index"] = j + 1
+    return turns
+
+
+# ---------------------------------------------------------------------------
+# VS Code Copilot Chat parser
+# ---------------------------------------------------------------------------
+
+# Response part kinds that carry no replayable content (progress spinners, undo
+# markers, editor bookkeeping). Everything else is rendered.
+_VSCODE_SKIP_PART_KINDS = {
+    "mcpServersStarting",
+    "undoStop",
+    "progressMessage",
+    "progressTaskSerialized",
+    "codeblockUri",
+    "textEditGroup",
+    "notebookEditGroup",
+    "elicitationSerialized",
+    "questionCarousel",
+    "autoModeResolution",
+    "confirmation",
+    "prepareToolInvocation",
+}
+
+_VSCODE_TOOL_MAP = {
+    "run_in_terminal": "Bash",
+    "Run in Terminal": "Bash",
+    "copilot_readFile": "Read",
+    "copilot_createFile": "Write",
+    "copilot_createDirectory": "Write",
+    "copilot_replaceString": "Edit",
+    "copilot_applyPatch": "Edit",
+    "copilot_insertEdit": "Edit",
+    "copilot_findTextInFiles": "Grep",
+    "copilot_searchCodebase": "Grep",
+    "copilot_findFiles": "Glob",
+    "copilot_listDirectory": "Glob",
+    "copilot_fetchWebPage": "WebFetch",
+    "manage_todo_list": "TodoWrite",
+    "execution_subagent": "Task",
+}
+
+
+def _vscode_tool_name(tool_id: str) -> str:
+    """Map a VS Code Copilot Chat ``toolId`` to a Claude-Code-style tool name."""
+    if not tool_id:
+        return "unknown"
+    mapped = _VSCODE_TOOL_MAP.get(tool_id)
+    if mapped:
+        return mapped
+    # MCP tools keep their descriptive id (``mcp_server_tool``); strip only the
+    # ``copilot_`` vendor prefix and TitleCase the rest.
+    name = tool_id[len("copilot_"):] if tool_id.startswith("copilot_") else tool_id
+    return name[:1].upper() + name[1:]
+
+
+def _vscode_md_text(value: Any) -> str:
+    """Pull plain text out of a VS Code markdown-ish value.
+
+    Parts store either a bare string or a ``{"value": "..."}`` wrapper.
+    """
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        inner = value.get("value")
+        if isinstance(inner, str):
+            return inner
+    return ""
+
+
+def _vscode_apply_journal(lines: list[dict]) -> dict[str, Any]:
+    """Replay a VS Code chat journal into the final session state.
+
+    ``chatSessions/<id>.jsonl`` is not a transcript but a journal: ``kind 0`` is
+    a full snapshot, ``kind 1`` sets the value at key-path ``k``, and ``kind 2``
+    appends to the list at ``k``. Later lines carry content missing from the
+    snapshot (a streamed response is appended via ``["requests", 0, "response"]``),
+    so the journal has to be replayed rather than read line-by-line.
+    """
+    state: dict[str, Any] = {}
+    for obj in lines:
+        kind = obj.get("kind")
+        value = obj.get("v")
+        path = obj.get("k")
+
+        if kind == 0:
+            state = value if isinstance(value, dict) else {}
+            continue
+        if not isinstance(path, list) or not path:
+            continue
+
+        cursor: Any = state
+        ok = True
+        for key in path[:-1]:
+            try:
+                cursor = cursor[key]
+            except (KeyError, IndexError, TypeError):
+                ok = False
+                break
+        if not ok:
+            continue
+
+        last = path[-1]
+        try:
+            if kind == 2 and isinstance(value, list):
+                existing = cursor[last]
+                if isinstance(existing, list):
+                    cursor[last] = existing + value
+                else:
+                    cursor[last] = value
+            else:
+                cursor[last] = value
+        except (KeyError, IndexError, TypeError):
+            continue
+
+    return state
+
+
+def _vscode_tool_input(part: dict[str, Any]) -> dict[str, Any]:
+    """Recover a tool call's arguments from a serialized invocation."""
+    specific = part.get("toolSpecificData")
+    if isinstance(specific, dict):
+        skind = specific.get("kind")
+        if skind == "terminal":
+            command_line = specific.get("commandLine")
+            command = ""
+            if isinstance(command_line, dict):
+                command = command_line.get("original") or ""
+            elif isinstance(command_line, str):
+                command = command_line
+            inp: dict[str, Any] = {"command": command}
+            if specific.get("cwd"):
+                inp["description"] = f"in {specific['cwd']}"
+            return inp
+        if skind == "input" and isinstance(specific.get("rawInput"), dict):
+            return specific["rawInput"]
+        if skind == "subagent":
+            return {
+                k: v
+                for k, v in (
+                    ("description", specific.get("description")),
+                    ("prompt", specific.get("prompt")),
+                    ("subagent_type", specific.get("agentName")),
+                )
+                if v
+            }
+        if skind == "todoList":
+            return {"todos": specific.get("todoList")}
+
+    # Fall back to the JSON-encoded input recorded alongside the result.
+    details = part.get("resultDetails")
+    if isinstance(details, dict) and details.get("input") is not None:
+        raw = details["input"]
+        if isinstance(raw, dict):
+            return raw
+        if isinstance(raw, str):
+            try:
+                decoded = json.loads(raw)
+                if isinstance(decoded, dict):
+                    return decoded
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+    # Last resort: the human-readable invocation line ("Reading [](file:///…)").
+    message = _vscode_md_text(part.get("invocationMessage"))
+    return {"description": message} if message else {}
+
+
+def _vscode_tool_result(part: dict[str, Any]) -> tuple[str | None, bool]:
+    """Recover a tool call's output and error flag from a serialized invocation."""
+    details = part.get("resultDetails")
+    is_error = False
+    if isinstance(details, dict):
+        is_error = bool(details.get("isError"))
+        output = details.get("output")
+        if isinstance(output, str):
+            return output, is_error
+        if isinstance(output, list):
+            chunks = [
+                str(o.get("value", ""))
+                for o in output
+                if isinstance(o, dict) and o.get("value") is not None
+            ]
+            if chunks:
+                return "\n".join(chunks), is_error
+
+    # No structured result: fall back to the past-tense summary VS Code shows
+    # once a call completes ("Read [](file:///…)").
+    past = _vscode_md_text(part.get("pastTenseMessage"))
+    if past:
+        return past, is_error
+    return (None, is_error) if not part.get("isComplete") else ("", is_error)
+
+
+def _parse_vscode_copilot_format(lines: list[dict]) -> list[dict[str, Any]]:
+    """Parse a VS Code Copilot Chat ``chatSessions/<id>.jsonl`` journal into turns.
+
+    The journal is replayed into a final state (see
+    :func:`_vscode_apply_journal`), then each entry of ``requests`` becomes one
+    turn: ``message.text`` is the prompt and ``response`` is a list of parts —
+    bare markdown (a part with no ``kind``), ``thinking``, ``inlineReference``
+    and ``toolInvocationSerialized``. Consecutive text parts are merged, since
+    VS Code splits a single streamed answer across many of them.
+    """
+    state = _vscode_apply_journal(lines)
+    requests = state.get("requests")
+    if not isinstance(requests, list):
+        return []
+
+    turns: list[dict[str, Any]] = []
+
+    for request in requests:
+        if not isinstance(request, dict):
+            continue
+
+        message = request.get("message")
+        user_text = ""
+        if isinstance(message, dict):
+            user_text = _clean_system_tags((message.get("text") or "").strip())
+
+        timestamp = _ms_to_iso(request.get("timestamp")) or ""
+        response_ts = _ms_to_iso(request.get("responseTimestamp")) or timestamp
+
+        blocks: list[dict[str, Any]] = []
+        text_buffer: list[str] = []
+
+        def _flush_text() -> None:
+            joined = "".join(text_buffer).strip()
+            text_buffer.clear()
+            if joined:
+                blocks.append(_make_block("text", text=joined, timestamp=response_ts))
+
+        for part in request.get("response") or []:
+            if not isinstance(part, dict):
+                continue
+            kind = part.get("kind")
+
+            if kind is None:
+                text_buffer.append(_vscode_md_text(part.get("value")))
+                continue
+
+            if kind == "inlineReference":
+                # An inline file mention sitting inside the surrounding prose.
+                ref = part.get("inlineReference")
+                path = ""
+                if isinstance(ref, dict):
+                    path = ref.get("fsPath") or ref.get("path") or ""
+                elif isinstance(ref, str):
+                    path = ref
+                if path:
+                    text_buffer.append(f"`{Path(path).name}`")
+                continue
+
+            if kind == "thinking":
+                _flush_text()
+                thought = _vscode_md_text(part.get("value")).strip()
+                if thought:
+                    blocks.append(
+                        _make_block("thinking", text=thought, timestamp=response_ts)
+                    )
+                continue
+
+            if kind == "toolInvocationSerialized":
+                _flush_text()
+                name = _vscode_tool_name(part.get("toolId") or "")
+                result, is_error = _vscode_tool_result(part)
+                tc = _make_tool_call(
+                    tool_use_id=part.get("toolCallId") or "",
+                    name=name,
+                    inp=_vscode_tool_input(part),
+                    result=result,
+                    result_timestamp=response_ts,
+                    is_error=is_error,
+                )
+                blocks.append(
+                    _make_block("tool_use", tool_call=tc, timestamp=response_ts)
+                )
+                continue
+
+            if kind in _VSCODE_SKIP_PART_KINDS:
+                continue
+
+        _flush_text()
+
+        if user_text or blocks:
+            turns.append(_make_turn(len(turns) + 1, user_text, blocks, timestamp))
+
+    return turns
+
+
+# ---------------------------------------------------------------------------
 # Replay format parser
 # ---------------------------------------------------------------------------
 
@@ -1292,8 +1828,8 @@ def parse_session(
     """
     Parse a JSONL transcript file and return a list of turn dicts.
 
-    The format (Claude Code, Cursor, Codex, OpenCode, Pi, or Replay) is detected
-    automatically.  When *paced_timing* is ``True`` the timestamps are replaced
+    The format (Claude Code, Cursor, Codex, OpenCode, Pi, Copilot CLI, VS Code
+    Copilot Chat, or Replay) is detected automatically.  When *paced_timing* is ``True`` the timestamps are replaced
     with synthetic timing based on content length.
 
     Parameters
@@ -1340,6 +1876,10 @@ def parse_session(
             turns = _parse_codex_format(parsed_lines)
         case "pi":
             turns = _parse_pi_format(parsed_lines)
+        case "copilot":
+            turns = _parse_copilot_format(parsed_lines)
+        case "copilot-chat":
+            turns = _parse_vscode_copilot_format(parsed_lines)
         case "replay":
             turns = _parse_replay_format(parsed_lines)
         case "cursor":

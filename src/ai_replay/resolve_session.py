@@ -142,6 +142,34 @@ def resolve_session_id(
                         SessionMatch(path=f, project=display_name, group="Pi")
                     )
 
+    # ------------------------------------------------------------------
+    # GitHub Copilot CLI: ~/.copilot/session-state/<uuid>/events.jsonl
+    # The transcript filename is always ``events.jsonl``, so match on the
+    # session directory's UUID instead.
+    # (overridable via the COPILOT_CLI_DIR environment variable)
+    # ------------------------------------------------------------------
+    from .discover import _copilot_project
+
+    copilot_dir = os.environ.get("COPILOT_CLI_DIR")
+    copilot_base = (
+        Path(copilot_dir) if copilot_dir else home_dir / ".copilot"
+    ) / "session-state"
+    if copilot_base.is_dir():
+        for session_path in copilot_base.iterdir():
+            if not session_path.is_dir():
+                continue
+            if session_id not in session_path.name:
+                continue
+            events = session_path / "events.jsonl"
+            if events.is_file():
+                matches.append(
+                    SessionMatch(
+                        path=events,
+                        project=_copilot_project(events),
+                        group="Copilot",
+                    )
+                )
+
     return matches
 
 
@@ -177,7 +205,8 @@ def resolve_session_path(session_id: str, home: Path | None = None) -> Path:
         raise FileNotFoundError(
             f"No session found matching {session_id!r}. "
             "Searched ~/.claude/projects/, ~/.cursor/projects/, "
-            "~/.codex/sessions/, and ~/.pi/agent/sessions/"
+            "~/.codex/sessions/, ~/.pi/agent/sessions/, and "
+            "~/.copilot/session-state/"
         )
 
     if len(matches) > 1:
