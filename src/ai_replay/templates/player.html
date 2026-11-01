@@ -456,20 +456,60 @@ body.in-iframe .more-open-link + hr.more-divider { display: block; }
   font-weight: 600;
 }
 
-/* Background task notification badge */
+/* Background task notification card */
 .bg-task-badge {
-  display: inline-block;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 2px 8px;
-  font-size: 12px;
+  border-left: 3px solid var(--text-dim);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  line-height: 1.45;
   color: var(--text);
   margin: 4px 0;
+  max-width: 100%;
 }
-.bg-task-badge::before {
-  content: "⚡ ";
+.bg-task-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--bg);
+  background: var(--text-dim);
+  margin-top: 1px;
 }
+.bg-task-body { min-width: 0; overflow-wrap: anywhere; }
+.bg-task-status {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin-right: 6px;
+}
+.bg-task-badge code {
+  background: var(--bg);
+  border-radius: 3px;
+  padding: 0 4px;
+  color: var(--text-bright);
+}
+.bg-task-completed { border-left-color: var(--green); }
+.bg-task-completed .bg-task-icon { background: var(--green); }
+.bg-task-completed .bg-task-status { color: var(--green); }
+.bg-task-failed { border-left-color: var(--red); }
+.bg-task-failed .bg-task-icon { background: var(--red); }
+.bg-task-failed .bg-task-status { color: var(--red); }
+.bg-task-killed, .bg-task-stopped { border-left-color: var(--orange); }
+.bg-task-killed .bg-task-icon, .bg-task-stopped .bg-task-icon { background: var(--orange); }
+.bg-task-killed .bg-task-status, .bg-task-stopped .bg-task-status { color: var(--orange); }
 
 /* Markdown in user text and thinking */
 .user-text pre, .thinking-body pre {
@@ -1184,6 +1224,20 @@ body.in-iframe .more-open-link + hr.more-divider { display: block; }
   // § UTILITIES
   // ═══════════════════════════════════════════
 
+  // Background task notification -> status card. Accepts legacy plain strings.
+  function renderSystemEvent(ev) {
+    const e = typeof ev === "string" ? { status: "", text: ev } : (ev || {});
+    const status = String(e.status || "").toLowerCase();
+    const icons = { completed: "\u2713", failed: "\u2715", killed: "\u25A0", stopped: "\u25A0" };
+    const icon = icons[status] || "\u26A1";
+    // Show the quoted command description as inline code
+    const text = escapeHtml(e.text || "").replace(/"([^"<]+)"/, "<code>$1</code>");
+    const cls = /^[a-z]+$/.test(status) ? ` bg-task-${status}` : "";
+    const label = status ? `<span class="bg-task-status">${escapeHtml(status)}</span>` : "";
+    return `<div class="bg-task-badge${cls}"><span class="bg-task-icon">${icon}</span>` +
+      `<span class="bg-task-body">${label}${text}</span></div>`;
+  }
+
   function escapeHtml(text) {
     const div = document.createElement("div");
     div.textContent = text;
@@ -1496,7 +1550,7 @@ body.in-iframe .more-open-link + hr.more-divider { display: block; }
       html += `<div class="role-section role-system">`;
       html += `<div class="role-label role-system-label">System</div>`;
       for (const ev of turn.system_events) {
-        html += `<div class="bg-task-badge">${escapeHtml(ev)}</div>`;
+        html += renderSystemEvent(ev);
       }
       html += `</div>`;
     }

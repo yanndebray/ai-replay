@@ -18,7 +18,7 @@ Each turn dict has the shape::
         "user_text":    str,
         "blocks":       list[block_dict],
         "timestamp":    str,                 # ISO-8601
-        "system_events": list[str],          # optional
+        "system_events": list[dict],         # optional: {kind, status, text}
         "bookmark":     str | None,          # optional
     }
 
@@ -57,18 +57,40 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 
+_TASK_NOTIFICATION_RE = re.compile(r"<task-notification>([\s\S]*?)</task-notification>")
+_TASK_MARKER_RE = re.compile(r"\[bg-task(?::(\w*))?:\s*([^\n]+?)\]")
+
+
+def _task_notification_marker(m: re.Match) -> str:
+    """Turn a <task-notification> block into a one-line ``[bg-task:status: summary]`` marker.
+
+    Child tags are read by name, so extra/reordered children (e.g. the newer
+    ``<tool-use-id>``) don't break parsing.
+    """
+    fields = dict(re.findall(r"<([\w-]+)>([\s\S]*?)</\1>", m.group(1)))
+    summary = " ".join((fields.get("summary") or "").split())
+    status = (fields.get("status") or "").strip()
+    if not summary:
+        task_id = (fields.get("task-id") or "").strip()
+        summary = f"Background task {task_id} {status}".replace("  ", " ").strip()
+    return f"[bg-task:{status}: {summary}]" if summary else ""
+
+
+def _pull_system_events(text: str) -> tuple[str, list[dict]]:
+    """Remove ``[bg-task...]`` markers from *text*, returning them as event dicts."""
+    events: list[dict] = []
+
+    def _pull(m: re.Match) -> str:
+        events.append({"kind": "bg-task", "status": m.group(1) or "", "text": m.group(2)})
+        return ""
+
+    return _TASK_MARKER_RE.sub(_pull, text).strip(), events
+
+
 def _clean_system_tags(text: str) -> str:
     """Strip / transform known system tags from user message text."""
     # Replace <task-notification> blocks with a compact marker
-    text = re.sub(
-        r"<task-notification>\s*<task-id>[^<]*</task-id>"
-        r"\s*<output-file>[^<]*</output-file>"
-        r"\s*<status>([^<]*)</status>"
-        r"\s*<summary>([^<]*)</summary>"
-        r"\s*</task-notification>",
-        lambda m: f"[bg-task: {m.group(2)}]",
-        text,
-    )
+    text = _TASK_NOTIFICATION_RE.sub(_task_notification_marker, text)
     # Remove trailing "Read the output file..." lines that follow notifications
     text = re.sub(r"\n*Read the output file to retrieve the result:[^\n]*", "", text)
     # Unwrap Cursor's <user_query> tags
@@ -445,14 +467,7 @@ def _parse_claude_entries(entries: list[dict]) -> list[dict[str, Any]]:
                 i += 1
 
             # Extract system events (bg-task notifications) from user text
-            system_events: list[str] = []
-
-            def _pull_event(m: re.Match) -> str:  # noqa: E306
-                system_events.append(m.group(1))
-                return ""
-
-            user_text = re.sub(r"\[bg-task:\s*(.+)\]", _pull_event, user_text)
-            user_text = user_text.strip()
+            user_text, system_events = _pull_system_events(user_text)
 
             assistant_blocks, next_i = _collect_assistant_blocks(entries, i)
             i = next_i
